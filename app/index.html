@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NekoSSH</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <!-- Capa de Fondo Personalizado -->
+    <div id="bg-image-layer" class="bg-image-layer"></div>
+    <div id="bg-overlay-layer" class="bg-overlay-layer"></div>
+
+    <div class="app-layout">
+      <!-- Panel Lateral Izquierdo -->
+      <aside class="sidebar">
+        <div class="sidebar-header">
+          <h1 class="brand-title">NekoSSH</h1>
+          <span class="brand-subtitle">Estética Cyber-Sakura</span>
+        </div>
+        
+        <!-- Pestañas de Navegación Lateral (Servidores / Archivos) -->
+        <div class="sidebar-tabs">
+          <button id="tab-btn-servers" class="sidebar-tab-btn active">Servidores</button>
+          <button id="tab-btn-files" class="sidebar-tab-btn" disabled>Archivos</button>
+        </div>
+
+        <!-- Contenedor del panel activo -->
+        <div class="sidebar-content">
+          <!-- Panel de Perfiles de Conexión -->
+          <div id="panel-servers" class="sidebar-panel active">
+            <div class="panel-actions">
+              <button id="btn-new-profile" class="btn-primary">+ Nuevo Perfil</button>
+            </div>
+            <div id="profile-list" class="profile-list">
+              <!-- Cargado dinámicamente -->
+              <div class="profile-list-empty">No hay perfiles de conexión.</div>
+            </div>
+          </div>
+
+          <!-- Panel de Explorador de Archivos (Fase 2) -->
+          <div id="panel-files" class="sidebar-panel">
+            <div class="panel-placeholder">Explorador de Archivos (Fase 2)</div>
+          </div>
+        </div>
+
+        <!-- Panel de Configuración Rápida en Sidebar (Fondo y Opacidad) -->
+        <div class="sidebar-footer">
+          <div class="config-section">
+            <label class="config-label">Fondo de Interfaz</label>
+            <div class="config-row">
+              <input type="text" id="config-bg-url" placeholder="URL o ruta de imagen..." />
+              <button id="btn-apply-bg" class="btn-secondary">Aplicar</button>
+            </div>
+            <label class="config-label">Opacidad de Capa: <span id="opacity-val">0.30</span></label>
+            <input type="range" id="config-bg-opacity" min="0.10" max="0.40" step="0.05" value="0.30" />
+          </div>
+        </div>
+      </aside>
+
+      <!-- Contenedor Principal (Terminales / Editor) -->
+      <main class="main-content">
+        <!-- Barra de Pestañas de Terminales -->
+        <div class="terminal-tabs-bar">
+          <div id="terminal-tabs-list" class="terminal-tabs-list">
+            <!-- Pestañas activas cargadas dinámicamente -->
+          </div>
+          <button id="btn-close-all-terminals" class="btn-icon-text" style="display: none;">Cerrar Todo</button>
+        </div>
+
+        <!-- Área de visualización de Terminal/Editor -->
+        <div id="main-display-area" class="main-display-area">
+          <div class="welcome-screen">
+            <div class="welcome-card">
+              <h2>NekoSSH v2.0</h2>
+              <p>Selecciona un perfil de servidor en la barra lateral para iniciar una terminal SSH con estética Cyber-Sakura.</p>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <!-- Modal Formulario de Perfil (Fase 1 / CRUD) -->
+    <div id="profile-modal" class="modal">
+      <div class="modal-content">
+        <h2 id="modal-title">Nuevo Perfil de Servidor</h2>
+        <form id="profile-form">
+          <input type="hidden" id="profile-id" />
+          
+          <div class="form-group">
+            <label for="prof-name">Nombre del Perfil</label>
+            <input type="text" id="prof-name" required placeholder="Ej. Servidor de Producción" />
+          </div>
+
+          <div class="form-group-row">
+            <div class="form-group">
+              <label for="prof-host">Host (IP / Dominio)</label>
+              <input type="text" id="prof-host" required placeholder="192.168.1.100" />
+            </div>
+            <div class="form-group" style="flex: 0 0 100px;">
+              <label for="prof-port">Puerto</label>
+              <input type="number" id="prof-port" required value="22" min="1" max="65535" />
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="prof-username">Usuario</label>
+            <input type="text" id="prof-username" required placeholder="ubuntu" />
+          </div>
+
+          <div class="form-group">
+            <label for="prof-auth-type">Método de Autenticación</label>
+            <select id="prof-auth-type">
+              <option value="password">Contraseña</option>
+              <option value="key">Llave Privada</option>
+            </select>
+          </div>
+
+          <!-- Campos condicionales -->
+          <div id="auth-password-group" class="form-group">
+            <label for="prof-password">Contraseña</label>
+            <input type="password" id="prof-password" placeholder="••••••••" />
+          </div>
+
+          <div id="auth-key-group" class="form-group" style="display: none;">
+            <label for="prof-key-path">Ruta de Llave Privada (.pem, .key, etc.)</label>
+            <input type="text" id="prof-key-path" placeholder="C:\Users\...\id_rsa" />
+            <label for="prof-passphrase" style="margin-top: 8px;">Frase de Paso (Passphrase)</label>
+            <input type="password" id="prof-passphrase" placeholder="Opcional" />
+          </div>
+
+          <div class="form-group-row">
+            <div class="form-group">
+              <label for="prof-keepalive">Keepalive (segundos)</label>
+              <input type="number" id="prof-keepalive" value="60" min="0" />
+            </div>
+          </div>
+
+          <!-- Sección de Túneles SSH -->
+          <div class="tunnels-section">
+            <h3>Túneles SSH (Opcional)</h3>
+            <div class="form-group-row">
+              <div class="form-group">
+                <label for="tun-type">Tipo</label>
+                <select id="tun-type">
+                  <option value="none">Ninguno</option>
+                  <option value="local">Local</option>
+                  <option value="dynamic">Dinámico (SOCKS)</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label for="tun-local-port">Puerto Local</label>
+                <input type="number" id="tun-local-port" placeholder="Ej. 8080" />
+              </div>
+            </div>
+            <div id="tunnel-dest-group" class="form-group" style="display: none;">
+              <label for="tun-dest">Destino (Host:Puerto)</label>
+              <input type="text" id="tun-dest" placeholder="localhost:80" />
+            </div>
+          </div>
+
+          <div class="modal-actions">
+            <button type="button" id="btn-cancel-profile" class="btn-secondary">Cancelar</button>
+            <button type="submit" id="btn-save-profile" class="btn-primary">Guardar</button>
+          </div>
+        </form>
+      </div>
+    </div>
+  </body>
+</html>
