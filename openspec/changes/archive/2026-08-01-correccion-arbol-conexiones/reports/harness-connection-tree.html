@@ -1,0 +1,70 @@
+﻿<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Harness — árbol runtime (clases app)</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/app/src/styles.css" />
+  <style>
+    body { margin: 0; padding: 24px; background: var(--bg-dark-base, #0c060d); color: var(--color-text-primary, #f8f8f2); font-family: var(--font-sans); }
+    .harness-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.08em; color: var(--color-text-muted); margin-bottom: 10px; }
+    .sidebar { width: 280px; border: var(--glass-border); border-radius: var(--border-radius-lg); background: rgba(12,6,13,0.92); padding: 12px 10px; min-height: 420px; }
+  </style>
+</head>
+<body>
+  <div class="harness-label">Harness runtime — mismas clases que app (.connection-tree)</div>
+  <aside class="sidebar">
+    <div id="profile-list" class="profile-list connection-tree">
+      <div class="folder-block" data-folder-id="1">
+        <div class="folder-row" title="Clic para colapsar">
+          <button type="button" class="folder-chevron" aria-expanded="true">›</button>
+          <span class="folder-icon">📁</span>
+          <span class="folder-name">General</span>
+          <div class="folder-actions">
+            <button type="button" class="btn-icon" title="Nueva conexión en esta carpeta" aria-label="Nueva conexión en esta carpeta">+</button>
+          </div>
+        </div>
+        <div class="folder-children">
+          <div class="profile-item active">
+            <div class="profile-item-header"><span class="profile-item-name">asd</span></div>
+            <div class="profile-item-host-row">
+              <span class="profile-item-host">root@192.168.1.10:22</span>
+              <button type="button" class="btn-icon btn-copy-endpoint" title="Copiar user@host" aria-label="Copiar user@host">⎘</button>
+            </div>
+          </div>
+          <div class="profile-item">
+            <div class="profile-item-header"><span class="profile-item-name">asd</span></div>
+            <div class="profile-item-host-row">
+              <span class="profile-item-host">user@10.0.0.5:22</span>
+              <button type="button" class="btn-icon btn-copy-endpoint">⎘</button>
+            </div>
+          </div>
+          <div class="profile-item">
+            <div class="profile-item-header"><span class="profile-item-name">test</span></div>
+            <div class="profile-item-host-row">
+              <span class="profile-item-host">admin@example.com:2222</span>
+              <button type="button" class="btn-icon btn-copy-endpoint">⎘</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="folder-block" data-folder-id="2">
+        <div class="folder-row">
+          <button type="button" class="folder-chevron" aria-expanded="true">›</button>
+          <span class="folder-icon">📁</span>
+          <span class="folder-name">Nueva carpeta</span>
+          <div class="folder-actions">
+            <button type="button" class="btn-icon" title="Nueva conexión en esta carpeta">+</button>
+          </div>
+        </div>
+        <div class="folder-children">
+          <div class="folder-empty">Sin conexiones</div>
+        </div>
+      </div>
+    </div>
+  </aside>
+</body>
+</html>

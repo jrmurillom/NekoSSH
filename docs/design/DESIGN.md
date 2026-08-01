@@ -97,7 +97,7 @@ Definir en el stylesheet raíz de la app y heredar globalmente. No hardcodear he
 - Tamaño vía CSS `--icon-size` / clase `.icon`. Implementación: `app/src/icons.ts`.
 - Controles solo-icono deben tener `title` y/o `aria-label`.
 - Rename inline de carpeta/conexión: input en la fila del árbol (no modal obligatorio); se inicia desde el menú contextual; Enter = guardar, Escape = cancelar. No usar doble clic para renombrar.
-- Tarjeta de conexión: línea endpoint en `--color-cyan-electric`; icono Copy Lucide; sin badge `SSH (Contraseña|Llave)`.
+- Cajita de conexión (árbol sidebar): fondo/borde/radius de tarjeta en `.connection-tree .profile-item`; endpoint en `--color-cyan-electric`; icono Copy Lucide; sin badge `SSH (Contraseña|Llave)`. Carpetas: filas compactas sin chrome de tarjeta.
 
 ### Confirmaciones (dialog)
 

@@ -1471,9 +1471,7 @@ function renderProfileList() {
       childrenEl.className = "folder-children";
       if (children.length === 0) {
         const empty = document.createElement("div");
-        empty.className = "profile-list-empty";
-        empty.style.padding = "12px 8px";
-        empty.style.fontSize = "0.8rem";
+        empty.className = "folder-empty";
         empty.textContent = "Sin conexiones";
         childrenEl.appendChild(empty);
       } else {

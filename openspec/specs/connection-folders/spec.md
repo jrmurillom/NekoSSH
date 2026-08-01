@@ -35,3 +35,18 @@ El sistema SHALL permitir editar el nombre de una carpeta de forma inline en el 
 #### Scenario: Cancelar con Escape
 - **WHEN** el usuario edita inline y pulsa Escape
 - **THEN** el sistema descarta el cambio y restaura el nombre anterior
+
+### Requirement: Presentación densa del árbol de carpetas
+En el sidebar Servidores, las filas de carpeta y el contenedor de hijos SHALL presentarse con **densidad de lista** (filas compactas, sin chrome de tarjeta en la carpeta). El bloque de carpeta MUST indicar jerarquía padre/hijo mediante indentación de los hijos y una guía vertical (p. ej. borde izquierdo sutil). La fila de carpeta SHALL conservar el chrome funcional existente (chevron + icono carpeta + nombre + `+`) sin basurero inline. Las conexiones hijas pueden usar cajita con chrome de tarjeta; las carpetas NO MUST verse como tarjetas decorativas.
+
+#### Scenario: Fila de carpeta compacta
+- **WHEN** el usuario ve una carpeta en el árbol
+- **THEN** la fila se lee como ítem de lista densa (altura/padding compactos), no como tarjeta decorativa gruesa
+
+#### Scenario: Guía e indentación de hijos
+- **WHEN** una carpeta está expandida y tiene conexiones (o el estado vacío «Sin conexiones»)
+- **THEN** el contenido hijo aparece indentado bajo la carpeta con una guía vertical visible que refuerza la relación padre/hijo
+
+#### Scenario: Comportamiento de expand/collapse intacto
+- **WHEN** el usuario hace clic primario en la fila de una carpeta (fuera del botón `+`)
+- **THEN** el sistema muestra u oculta los hijos como antes; el cambio de estilo NO MUST alterar esa interacción

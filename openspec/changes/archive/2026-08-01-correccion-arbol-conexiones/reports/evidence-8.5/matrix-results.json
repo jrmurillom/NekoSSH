@@ -1,0 +1,78 @@
+{
+  "base": "http://localhost:1420/",
+  "results": [
+    {
+      "id": 2,
+      "name": "Cajitas visibles (fondo/borde/radius)",
+      "status": "PASS",
+      "evidence": "computed: bg=rgba(255, 255, 255, 0.03); border=1px solid rgba(255, 105, 180, 0.1); radius=8px; padding=8px 10px"
+    },
+    {
+      "id": 3,
+      "name": "Indent + línea guía",
+      "status": "PASS",
+      "evidence": "{\"marginLeft\":\"18px\",\"paddingLeft\":\"10px\",\"borderLeftWidth\":\"1px\",\"borderLeftStyle\":\"solid\",\"borderLeftColor\":\"rgba(255, 105, 180, 0.12)\"}"
+    },
+    {
+      "id": 1,
+      "name": "Expand/collapse carpeta",
+      "status": "PASS",
+      "evidence": "before=2 collapsed=0 reexpanded=2"
+    },
+    {
+      "id": 11,
+      "name": "Empty «Sin conexiones» dashed",
+      "status": "PASS",
+      "evidence": "{\"text\":\"Sin conexiones\",\"borderStyle\":\"dashed\",\"borderWidth\":\"1px\"}"
+    },
+    {
+      "id": 10,
+      "name": "Copiar user@host",
+      "status": "PASS",
+      "evidence": "clipboard=\"root@192.168.1.10\" expected=\"root@192.168.1.10\""
+    },
+    {
+      "id": 5,
+      "name": "Context menu Editar abre modal con datos",
+      "status": "PASS",
+      "evidence": "{\"active\":true,\"title\":\"Editar conexión\",\"name\":\"asd\",\"host\":\"192.168.1.10\",\"user\":\"root\",\"port\":\"22\",\"id\":\"1\"}"
+    },
+    {
+      "id": 6,
+      "name": "Guardar edit persiste y se refleja en lista",
+      "status": "PASS",
+      "evidence": "{\"items\":[{\"name\":\"asd-edited\",\"host\":\"root@10.0.0.99:22\"},{\"name\":\"test\",\"host\":\"admin@example.com:2222\"}],\"profile\":{\"id\":1,\"folder_id\":1,\"name\":\"asd-edited\",\"host\":\"10.0.0.99\",\"port\":22,\"username\":\"root\",\"auth_type\":\"password\",\"password\":\"x\",\"keepalive\":60,\"tunnel_type\":\"none\"},\"invokes\":[{\"cmd\":\"update_profile\",\"args\":{\"profile\":{\"name\":\"asd-edited\",\"host\":\"10.0.0.99\",\"port\":22,\"username\":\"root\",\"auth_type\":\"password\",\"keepalive\":60,\"tunnel_type\":\"none\",\"folder_id\":1,\"id\":1,\"password\":\"x\"}}}]}"
+    },
+    {
+      "id": 7,
+      "name": "Renombrar",
+      "status": "PASS",
+      "evidence": "{\"renameVisible\":true,\"names\":[\"asd-edited\",\"test-renamed\"],\"profileName\":\"test-renamed\"}"
+    },
+    {
+      "id": 8,
+      "name": "Eliminar",
+      "status": "SKIP",
+      "evidence": "Omitido a propósito (destructivo). No se ejecutó delete_profile contra store live/real."
+    },
+    {
+      "id": 4,
+      "name": "Nueva conexión / nueva carpeta",
+      "status": "PASS",
+      "evidence": "{\"newFolderOk\":true,\"foldersAfter\":{\"count\":3,\"last\":{\"id\":3,\"name\":\"Nueva carpeta\",\"sort_order\":2},\"rows\":[\"General\",\"Nueva carpeta\"]},\"newModal\":{\"active\":true,\"title\":\"Nueva conexión\"},\"newProf\":{\"p\":{\"name\":\"smoke-new\",\"host\":\"127.0.0.1\",\"port\":22,\"username\":\"u\",\"auth_type\":\"password\",\"keepalive\":60,\"tunnel_type\":\"none\",\"folder_id\":3,\"password\":\"\",\"id\":3},\"shown\":true}}"
+    },
+    {
+      "id": 9,
+      "name": "Doble clic conecta",
+      "status": "PASS",
+      "evidence": "start_ssh_session args={\"terminalId\":\"term-1785603135031\",\"host\":\"10.0.0.99\",\"port\":22,\"username\":\"root\",\"authType\":\"password\",\"password\":\"x\",\"keyPath\":null,\"passphrase\":null,\"keepalive\":60}; tabishVisible=true"
+    },
+    {
+      "id": 12,
+      "name": "Snippets/footer smoke",
+      "status": "PASS",
+      "evidence": "{\"snippets\":{\"active\":true,\"text\":\"\\n      \\n        \\n          Snippets\\n          \\n        \\n        \\n          \\n    \"},\"footer\":{\"open\":true}}"
+    }
+  ],
+  "at": "2026-08-01T16:52:16.525Z"
+}

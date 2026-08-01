@@ -1,0 +1,885 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NekoSSH — Preview: árbol de conexiones denso</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-dark-base: #0c060d;
+        --bg-dark-card: rgba(20, 10, 22, 0.75);
+        --color-sakura-neon: #ff69b4;
+        --color-sakura-light: #ffb7d5;
+        --color-cyan-electric: #00ffff;
+        --color-purple-neon: #bd93f9;
+        --color-text-primary: #f8f8f2;
+        --color-text-muted: #a593ad;
+        --glass-blur: blur(16px);
+        --glass-border: 1px solid rgba(255, 105, 180, 0.15);
+        --glass-shadow: 0 8px 32px 0 rgba(12, 6, 13, 0.5);
+        --font-sans: "Outfit", system-ui, sans-serif;
+        --font-mono: "Fira Code", monospace;
+        --border-radius-sm: 4px;
+        --border-radius-md: 8px;
+        --border-radius-lg: 16px;
+        --transition-fast: 0.15s ease;
+        --scrollbar-size: 6px;
+        --scrollbar-thumb: rgba(255, 105, 180, 0.25);
+        --scrollbar-thumb-hover: rgba(255, 105, 180, 0.45);
+        --scrollbar-track: transparent;
+        --icon-size: 16px;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+        scrollbar-width: thin;
+        scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track);
+      }
+
+      *::-webkit-scrollbar {
+        width: var(--scrollbar-size);
+        height: var(--scrollbar-size);
+      }
+
+      *::-webkit-scrollbar-track {
+        background: var(--scrollbar-track);
+      }
+
+      *::-webkit-scrollbar-thumb {
+        background: var(--scrollbar-thumb);
+        border-radius: var(--border-radius-sm);
+      }
+
+      *::-webkit-scrollbar-thumb:hover {
+        background: var(--scrollbar-thumb-hover);
+      }
+
+      body {
+        font-family: var(--font-sans);
+        min-height: 100vh;
+        color: var(--color-text-primary);
+        background:
+          radial-gradient(1200px 600px at 10% -10%, rgba(255, 105, 180, 0.12), transparent 55%),
+          radial-gradient(900px 500px at 90% 10%, rgba(0, 255, 255, 0.06), transparent 50%),
+          var(--bg-dark-base);
+        padding: 28px 24px 48px;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+      }
+
+      .banner {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        margin-bottom: 14px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        border: 1px solid rgba(255, 105, 180, 0.35);
+        background: rgba(255, 105, 180, 0.08);
+        color: var(--color-sakura-light);
+        font-size: 0.82rem;
+        font-weight: 600;
+        letter-spacing: 0.02em;
+      }
+
+      h1 {
+        font-size: 1.35rem;
+        font-weight: 700;
+        margin-bottom: 6px;
+      }
+
+      .lede {
+        color: var(--color-text-muted);
+        max-width: 62ch;
+        line-height: 1.45;
+        margin-bottom: 20px;
+        font-size: 0.92rem;
+      }
+
+      .lede strong {
+        color: var(--color-sakura-light);
+      }
+
+      .mode-bar {
+        display: inline-flex;
+        gap: 4px;
+        padding: 4px;
+        margin-bottom: 22px;
+        border-radius: var(--border-radius-md);
+        border: 1px solid rgba(255, 105, 180, 0.22);
+        background: rgba(0, 0, 0, 0.35);
+      }
+
+      .mode-btn {
+        border: none;
+        background: transparent;
+        color: var(--color-text-muted);
+        font-family: var(--font-sans);
+        font-size: 0.82rem;
+        font-weight: 600;
+        padding: 8px 14px;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background var(--transition-fast), color var(--transition-fast);
+      }
+
+      .mode-btn:hover {
+        color: var(--color-sakura-light);
+      }
+
+      .mode-btn[aria-pressed="true"] {
+        background: rgba(255, 105, 180, 0.18);
+        color: var(--color-sakura-neon);
+      }
+
+      .stage {
+        display: flex;
+        justify-content: center;
+        gap: 28px;
+        flex-wrap: wrap;
+      }
+
+      .frame {
+        width: min(300px, 94vw);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .frame-label {
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--color-text-muted);
+        font-weight: 600;
+      }
+
+      .frame.is-hidden {
+        display: none;
+      }
+
+      /* Sidebar shell */
+      .sidebar-mock {
+        height: 520px;
+        border-radius: var(--border-radius-lg);
+        border: var(--glass-border);
+        background:
+          linear-gradient(180deg, rgba(28, 14, 32, 0.55), rgba(12, 6, 13, 0.75)),
+          rgba(12, 6, 13, 0.92);
+        box-shadow: var(--glass-shadow);
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+      }
+
+      .sidebar-header {
+        padding: 14px 14px 0;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        flex-shrink: 0;
+      }
+
+      .brand-row {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: var(--color-sakura-light);
+        font-weight: 700;
+        font-size: 0.95rem;
+        letter-spacing: 0.02em;
+      }
+
+      .brand-mark {
+        width: 22px;
+        height: 22px;
+        border-radius: 6px;
+        background: linear-gradient(135deg, var(--color-sakura-neon), #d82b7d);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-size: 0.7rem;
+        font-weight: 700;
+      }
+
+      .panel-actions {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .btn-primary {
+        flex: 1;
+        min-width: 0;
+        background: linear-gradient(135deg, var(--color-sakura-neon), #d82b7d);
+        color: white;
+        border: none;
+        border-radius: var(--border-radius-md);
+        padding: 10px 12px;
+        font-family: var(--font-sans);
+        font-weight: 600;
+        font-size: 0.88rem;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: filter var(--transition-fast), transform var(--transition-fast);
+      }
+
+      .btn-primary:hover {
+        filter: brightness(1.12);
+        transform: translateY(-1px);
+      }
+
+      .btn-icon-action {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 105, 180, 0.2);
+        color: var(--color-text-primary);
+        border-radius: var(--border-radius-md);
+        width: 36px;
+        height: 36px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        flex-shrink: 0;
+        transition: all var(--transition-fast);
+      }
+
+      .btn-icon-action:hover {
+        background: rgba(255, 105, 180, 0.12);
+        border-color: var(--color-sakura-neon);
+        color: var(--color-sakura-neon);
+      }
+
+      .sidebar-body {
+        flex: 1;
+        min-height: 0;
+        overflow: auto;
+        padding: 12px 10px 14px;
+      }
+
+      .sidebar-footer {
+        padding: 12px;
+        border-top: 1px solid rgba(255, 105, 180, 0.12);
+        background: rgba(12, 6, 13, 0.55);
+        display: flex;
+        gap: 8px;
+        flex-shrink: 0;
+      }
+
+      .footer-ghost {
+        flex: 1;
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 12px;
+        border-radius: var(--border-radius-md);
+        border: 1px solid rgba(255, 105, 180, 0.28);
+        background: linear-gradient(135deg, rgba(255, 105, 180, 0.12), rgba(0, 0, 0, 0.35));
+        color: var(--color-sakura-light);
+        font-size: 0.85rem;
+        font-weight: 600;
+      }
+
+      .gear-ghost {
+        width: 40px;
+        height: 40px;
+        border-radius: var(--border-radius-md);
+        border: 1px solid rgba(255, 105, 180, 0.22);
+        background: rgba(0, 0, 0, 0.35);
+        color: var(--color-text-muted);
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .icon {
+        display: block;
+        width: var(--icon-size);
+        height: var(--icon-size);
+        flex-shrink: 0;
+        stroke: currentColor;
+        fill: none;
+        stroke-width: 1.75;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        pointer-events: none;
+      }
+
+      .icon--sm {
+        --icon-size: 14px;
+      }
+
+      /* ——— ANTES: card style (approx current) ——— */
+      .tree-before {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .folder-block {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .folder-row-card {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 10px 12px;
+        border-radius: var(--border-radius-md);
+        border: 1px solid rgba(255, 105, 180, 0.18);
+        background: rgba(255, 255, 255, 0.04);
+        color: var(--color-text-primary);
+        cursor: pointer;
+        user-select: none;
+      }
+
+      .folder-row-card:hover {
+        background: rgba(255, 105, 180, 0.08);
+        border-color: rgba(255, 105, 180, 0.3);
+      }
+
+      .folder-children-card {
+        display: none;
+        flex-direction: column;
+        gap: 6px;
+        margin-left: 14px;
+        padding-left: 10px;
+        border-left: 1px solid rgba(255, 105, 180, 0.12);
+      }
+
+      .folder-block.is-open > .folder-children-card {
+        display: flex;
+      }
+
+      .folder-block.is-open .chevron {
+        transform: rotate(90deg);
+      }
+
+      .profile-card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 105, 180, 0.12);
+        border-radius: var(--border-radius-md);
+        padding: 10px 12px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+        cursor: pointer;
+        transition: background var(--transition-fast), border-color var(--transition-fast);
+      }
+
+      .profile-card:hover {
+        background: rgba(255, 105, 180, 0.08);
+        border-color: var(--color-sakura-neon);
+      }
+
+      .profile-card-name {
+        font-weight: 600;
+        font-size: 0.9rem;
+      }
+
+      .profile-card-host {
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
+        color: var(--color-cyan-electric);
+      }
+
+      .empty-card {
+        color: var(--color-text-muted);
+        text-align: center;
+        font-size: 0.85rem;
+        padding: 18px 8px;
+        border: 1px dashed rgba(255, 105, 180, 0.18);
+        border-radius: var(--border-radius-md);
+      }
+
+      /* ——— DESPUÉS: dense tree ——— */
+      .tree-dense {
+        display: flex;
+        flex-direction: column;
+        gap: 1px;
+      }
+
+      .folder-block-dense {
+        display: flex;
+        flex-direction: column;
+      }
+
+      .folder-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 4px 6px;
+        min-height: 28px;
+        border-radius: var(--border-radius-sm);
+        border: 1px solid transparent;
+        color: var(--color-text-primary);
+        user-select: none;
+        cursor: pointer;
+      }
+
+      .folder-row:hover {
+        background: rgba(255, 105, 180, 0.06);
+        border-color: rgba(255, 105, 180, 0.12);
+      }
+
+      .folder-row:hover .folder-add {
+        opacity: 1;
+        color: var(--color-sakura-neon);
+      }
+
+      .chevron {
+        background: transparent;
+        border: none;
+        color: var(--color-text-muted);
+        width: 18px;
+        height: 18px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        transition: transform var(--transition-fast);
+        pointer-events: none;
+      }
+
+      .folder-icon {
+        color: var(--color-cyan-electric);
+        flex-shrink: 0;
+        pointer-events: none;
+      }
+
+      .folder-name {
+        flex: 1;
+        min-width: 0;
+        font-weight: 600;
+        font-size: 0.86rem;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .folder-add {
+        background: transparent;
+        border: none;
+        color: var(--color-text-muted);
+        width: 22px;
+        height: 22px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 4px;
+        cursor: pointer;
+        opacity: 0.45;
+        flex-shrink: 0;
+        transition: opacity var(--transition-fast), color var(--transition-fast), background var(--transition-fast);
+      }
+
+      .folder-add:hover {
+        background: rgba(255, 105, 180, 0.12);
+        opacity: 1;
+        color: var(--color-sakura-neon);
+      }
+
+      .folder-children {
+        display: none;
+        flex-direction: column;
+        gap: 0;
+        margin-left: 14px;
+        padding-left: 10px;
+        border-left: 1px solid rgba(255, 105, 180, 0.16);
+      }
+
+      .folder-block-dense.is-open > .folder-children {
+        display: flex;
+      }
+
+      .folder-block-dense.is-open > .folder-row .chevron {
+        transform: rotate(90deg);
+      }
+
+      .conn-row {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 1px;
+        padding: 5px 8px;
+        min-height: 36px;
+        border-radius: var(--border-radius-sm);
+        border: 1px solid transparent;
+        cursor: pointer;
+        transition: background var(--transition-fast), border-color var(--transition-fast);
+      }
+
+      .conn-row:hover {
+        background: rgba(255, 105, 180, 0.07);
+        border-color: rgba(255, 105, 180, 0.18);
+      }
+
+      .conn-row.is-selected {
+        background: rgba(255, 105, 180, 0.1);
+        border-color: rgba(255, 105, 180, 0.28);
+      }
+
+      .conn-name {
+        font-weight: 600;
+        font-size: 0.86rem;
+        color: var(--color-text-primary);
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .conn-endpoint {
+        font-family: var(--font-mono);
+        font-size: 0.68rem;
+        color: var(--color-cyan-electric);
+        line-height: 1.2;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        opacity: 0.92;
+      }
+
+      .empty-subtle {
+        color: var(--color-text-muted);
+        font-size: 0.78rem;
+        font-style: italic;
+        padding: 6px 8px 8px;
+        opacity: 0.75;
+      }
+
+      .note {
+        margin-top: 28px;
+        max-width: 62ch;
+        color: var(--color-text-muted);
+        font-size: 0.82rem;
+        line-height: 1.45;
+      }
+
+      .note code {
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--color-sakura-light);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="banner" role="note">
+      Propuesta visual — aprobar antes de implementar / OpenSpec
+    </div>
+
+    <h1>Árbol de conexiones — densidad de lista</h1>
+    <p class="lede">
+      Misma jerarquía DOM (carpeta → conexiones). Se quitan las
+      <strong>tarjetas decorativas</strong> y se propone filas compactas alineadas al contrato:
+      <em>«densidad de lista, no tarjetas decorativas»</em> — manteniendo nombre +
+      <code style="font-family: var(--font-mono); color: var(--color-cyan-electric); font-size: 0.85em"
+        >user@host:port</code
+      >
+      en cian.
+    </p>
+
+    <div class="mode-bar" role="group" aria-label="Comparar estilos">
+      <button type="button" class="mode-btn" id="btn-after" aria-pressed="true">Después</button>
+      <button type="button" class="mode-btn" id="btn-before" aria-pressed="false">Antes</button>
+      <button type="button" class="mode-btn" id="btn-both" aria-pressed="false">Ambos</button>
+    </div>
+
+    <div class="stage">
+      <!-- DESPUÉS -->
+      <div class="frame" id="frame-after" data-mode="after">
+        <div class="frame-label">Después — árbol denso</div>
+        <aside class="sidebar-mock" aria-label="Sidebar propuesto">
+          <div class="sidebar-header">
+            <div class="brand-row">
+              <span class="brand-mark">N</span>
+              NekoSSH
+            </div>
+            <div class="panel-actions">
+              <button type="button" class="btn-primary" title="Nueva conexión">
+                <svg class="icon icon--sm" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 12h14" />
+                  <path d="M12 5v14" />
+                </svg>
+                Nueva conexión
+              </button>
+              <button type="button" class="btn-icon-action" title="Nueva carpeta" aria-label="Nueva carpeta">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 10v6" />
+                  <path d="M9 13h6" />
+                  <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-body">
+            <div class="tree-dense" id="tree-dense">
+              <div class="folder-block-dense is-open" data-folder>
+                <div class="folder-row" role="button" tabindex="0" aria-expanded="true">
+                  <span class="chevron" aria-hidden="true">
+                    <svg class="icon icon--sm" viewBox="0 0 24 24">
+                      <path d="m9 18 6-6-6-6" />
+                    </svg>
+                  </span>
+                  <svg class="icon folder-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                  </svg>
+                  <span class="folder-name">General</span>
+                  <button type="button" class="folder-add" title="Nueva conexión en esta carpeta" aria-label="Nueva conexión en esta carpeta">
+                    <svg class="icon icon--sm" viewBox="0 0 24 24">
+                      <path d="M5 12h14" />
+                      <path d="M12 5v14" />
+                    </svg>
+                  </button>
+                </div>
+                <div class="folder-children">
+                  <div class="conn-row is-selected" tabindex="0">
+                    <span class="conn-name">asd</span>
+                    <span class="conn-endpoint">root@192.168.1.10:22</span>
+                  </div>
+                  <div class="conn-row" tabindex="0">
+                    <span class="conn-name">asd</span>
+                    <span class="conn-endpoint">user@10.0.0.5:22</span>
+                  </div>
+                  <div class="conn-row" tabindex="0">
+                    <span class="conn-name">test</span>
+                    <span class="conn-endpoint">admin@example.com:2222</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="folder-block-dense is-open" data-folder>
+                <div class="folder-row" role="button" tabindex="0" aria-expanded="true">
+                  <span class="chevron" aria-hidden="true">
+                    <svg class="icon icon--sm" viewBox="0 0 24 24">
+                      <path d="m9 18 6-6-6-6" />
+                    </svg>
+                  </span>
+                  <svg class="icon folder-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                  </svg>
+                  <span class="folder-name">Nueva carpeta</span>
+                  <button type="button" class="folder-add" title="Nueva conexión en esta carpeta" aria-label="Nueva conexión en esta carpeta">
+                    <svg class="icon icon--sm" viewBox="0 0 24 24">
+                      <path d="M5 12h14" />
+                      <path d="M12 5v14" />
+                    </svg>
+                  </button>
+                </div>
+                <div class="folder-children">
+                  <div class="empty-subtle">Sin conexiones</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sidebar-footer">
+            <div class="footer-ghost">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15.032 2.034a1 1 0 0 0-1.066.09L8.5 6H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h4.5l5.466 3.876A1 1 0 0 0 16 21V3a1 1 0 0 0-.968-.966Z" />
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                <path d="M16.54 7.46a6 6 0 0 1 0 9.07" />
+              </svg>
+              Snippets
+            </div>
+            <div class="gear-ghost" aria-hidden="true">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </div>
+          </div>
+        </aside>
+      </div>
+
+      <!-- ANTES -->
+      <div class="frame is-hidden" id="frame-before" data-mode="before">
+        <div class="frame-label">Antes — tarjetas (aprox.)</div>
+        <aside class="sidebar-mock" aria-label="Sidebar actual aproximado">
+          <div class="sidebar-header">
+            <div class="brand-row">
+              <span class="brand-mark">N</span>
+              NekoSSH
+            </div>
+            <div class="panel-actions">
+              <button type="button" class="btn-primary" title="Nueva conexión">
+                <svg class="icon icon--sm" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M5 12h14" />
+                  <path d="M12 5v14" />
+                </svg>
+                Nueva conexión
+              </button>
+              <button type="button" class="btn-icon-action" title="Nueva carpeta" aria-label="Nueva carpeta">
+                <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 10v6" />
+                  <path d="M9 13h6" />
+                  <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                </svg>
+              </button>
+            </div>
+          </div>
+
+          <div class="sidebar-body">
+            <div class="tree-before" id="tree-before">
+              <div class="folder-block is-open" data-folder>
+                <div class="folder-row-card" role="button" tabindex="0" aria-expanded="true">
+                  <span class="chevron" aria-hidden="true">
+                    <svg class="icon icon--sm" viewBox="0 0 24 24">
+                      <path d="m9 18 6-6-6-6" />
+                    </svg>
+                  </span>
+                  <svg class="icon folder-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                  </svg>
+                  <span class="folder-name">General</span>
+                  <button type="button" class="folder-add" title="Nueva conexión" aria-label="Nueva conexión" style="opacity: 0.7">
+                    <svg class="icon icon--sm" viewBox="0 0 24 24">
+                      <path d="M5 12h14" />
+                      <path d="M12 5v14" />
+                    </svg>
+                  </button>
+                </div>
+                <div class="folder-children-card">
+                  <div class="profile-card">
+                    <span class="profile-card-name">asd</span>
+                    <span class="profile-card-host">root@192.168.1.10:22</span>
+                  </div>
+                  <div class="profile-card">
+                    <span class="profile-card-name">asd</span>
+                    <span class="profile-card-host">user@10.0.0.5:22</span>
+                  </div>
+                  <div class="profile-card">
+                    <span class="profile-card-name">test</span>
+                    <span class="profile-card-host">admin@example.com:2222</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="folder-block is-open" data-folder>
+                <div class="folder-row-card" role="button" tabindex="0" aria-expanded="true">
+                  <span class="chevron" aria-hidden="true">
+                    <svg class="icon icon--sm" viewBox="0 0 24 24">
+                      <path d="m9 18 6-6-6-6" />
+                    </svg>
+                  </span>
+                  <svg class="icon folder-icon" viewBox="0 0 24 24" aria-hidden="true">
+                    <path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" />
+                  </svg>
+                  <span class="folder-name">Nueva carpeta</span>
+                  <button type="button" class="folder-add" title="Nueva conexión" aria-label="Nueva conexión" style="opacity: 0.7">
+                    <svg class="icon icon--sm" viewBox="0 0 24 24">
+                      <path d="M5 12h14" />
+                      <path d="M12 5v14" />
+                    </svg>
+                  </button>
+                </div>
+                <div class="folder-children-card">
+                  <div class="empty-card">Sin conexiones</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="sidebar-footer">
+            <div class="footer-ghost">
+              <svg class="icon" viewBox="0 0 24 24" aria-hidden="true">
+                <path d="M15.032 2.034a1 1 0 0 0-1.066.09L8.5 6H4a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h4.5l5.466 3.876A1 1 0 0 0 16 21V3a1 1 0 0 0-.968-.966Z" />
+                <path d="M19.07 4.93a10 10 0 0 1 0 14.14" />
+                <path d="M16.54 7.46a6 6 0 0 1 0 9.07" />
+              </svg>
+              Snippets
+            </div>
+            <div class="gear-ghost" aria-hidden="true">
+              <svg class="icon" viewBox="0 0 24 24">
+                <path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z" />
+                <circle cx="12" cy="12" r="3" />
+              </svg>
+            </div>
+          </div>
+        </aside>
+      </div>
+    </div>
+
+    <p class="note">
+      Alineado a <code>ui-layout-contract.md</code>: sidebar con densidad de lista; filas de
+      carpeta (chevron + icono + nombre + <code>+</code>); conexiones indentadas con guía;
+      endpoint en cian. Sin cambios en <code>app/</code> — solo preview para aprobación.
+    </p>
+
+    <script>
+      (function () {
+        const frameAfter = document.getElementById("frame-after");
+        const frameBefore = document.getElementById("frame-before");
+        const btnAfter = document.getElementById("btn-after");
+        const btnBefore = document.getElementById("btn-before");
+        const btnBoth = document.getElementById("btn-both");
+
+        function setMode(mode) {
+          const showAfter = mode === "after" || mode === "both";
+          const showBefore = mode === "before" || mode === "both";
+          frameAfter.classList.toggle("is-hidden", !showAfter);
+          frameBefore.classList.toggle("is-hidden", !showBefore);
+          btnAfter.setAttribute("aria-pressed", String(mode === "after"));
+          btnBefore.setAttribute("aria-pressed", String(mode === "before"));
+          btnBoth.setAttribute("aria-pressed", String(mode === "both"));
+        }
+
+        btnAfter.addEventListener("click", () => setMode("after"));
+        btnBefore.addEventListener("click", () => setMode("before"));
+        btnBoth.addEventListener("click", () => setMode("both"));
+
+        function bindTree(root) {
+          if (!root) return;
+          root.querySelectorAll("[data-folder]").forEach((block) => {
+            const row = block.querySelector(".folder-row, .folder-row-card");
+            if (!row) return;
+            const toggle = (e) => {
+              if (e.target.closest(".folder-add")) {
+                e.stopPropagation();
+                return;
+              }
+              const open = block.classList.toggle("is-open");
+              row.setAttribute("aria-expanded", String(open));
+            };
+            row.addEventListener("click", toggle);
+            row.addEventListener("keydown", (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                toggle(e);
+              }
+            });
+          });
+
+          root.querySelectorAll(".folder-add").forEach((btn) => {
+            btn.addEventListener("click", (e) => e.stopPropagation());
+          });
+        }
+
+        bindTree(document.getElementById("tree-dense"));
+        bindTree(document.getElementById("tree-before"));
+
+        document.querySelectorAll(".conn-row").forEach((row) => {
+          row.addEventListener("click", () => {
+            document.querySelectorAll(".conn-row").forEach((r) => r.classList.remove("is-selected"));
+            row.classList.add("is-selected");
+          });
+        });
+      })();
+    </script>
+  </body>
+</html>
