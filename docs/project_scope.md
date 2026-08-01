@@ -10,7 +10,7 @@ Este documento define el alcance, stack tecnológico y las fases de desarrollo p
    - Backend en **Rust** (multithreading nativo para optimizar procesos SSH, concurrencia en transferencia de archivos SFTP y persistencia segura).
    - Frontend en **TypeScript + Vite + HTML/CSS**.
 2. **Emulación de Terminal**: **xterm.js** + `xterm-addon-fit`.
-3. **Editor de Código**: **Monaco Editor** integrado para edición remota.
+3. **Edición remota**: editor **externo** preferido + sync con confirmación (Fase 3). Monaco Editor integrado queda diferido como **Fase 3b**.
 4. **Persistencia**: **SQLite** local (vía plugin oficial de Tauri `tauri-plugin-sql`).
 5. **Estilos y Temas**: CSS Vanilla basado en un sistema centralizado de **Tokens de Diseño** (CSS Custom Properties). 
    - Soporte para fondos personalizados configurables (fondos translúcidos de color o imagen).
@@ -49,13 +49,19 @@ Este documento define el alcance, stack tecnológico y las fases de desarrollo p
 
 ---
 
-### 📋 Fase 3: Editor Monaco Integrado (Notepad++ Alternativa)
-* **Editor Integrado**:
-  - Inserción de Monaco Editor nativo dentro de la aplicación.
-  - Soporte de funciones nativas básicas: Buscar (`Ctrl + F`), Reemplazar (`Ctrl + H`), resaltado de sintaxis multilinguaje y números de línea.
-* **Lógica de Edición Silenciosa**:
-  - Doble clic en el explorador SFTP descarga el archivo en un directorio temporal y lo abre en el editor integrado.
-  - Al presionar `Ctrl + S`, la aplicación re-sube automáticamente y de manera silenciosa el archivo modificado al servidor de origen.
+### 📋 Fase 3: Edición remota vía editor externo + sync con confirm
+* **Flujo FileZilla-style**:
+  - Doble clic (o menú contextual **Editar**) en un archivo del explorador SFTP descarga el remoto a un temp aislado de la app y lo abre con el **editor externo preferido** (ruta configurable) o, si no hay preferencia válida, con la asociación del SO.
+  - Vigilancia del archivo local; al detectar cambios reales (debounce), dialog glass A1: **¿Subir al servidor?**
+  - Confirmar → upload/replace del path remoto vía el canal SFTP de la sesión. Cancelar / Escape deja el remoto intacto.
+  - Si el upload normal falla por **permisos**, dialog A1 opcional **«Subir con sudo»** (un reintento: temp remoto + `sudo -n cp`). Sin UI de contraseña; si sudo pide password / falla → alert y se conserva el temp local dirty. No es el camino por defecto.
+  - **Sin** auto-upload silencioso.
+* **Políticas**: rechazo amable >10 MiB; aviso A1 si el archivo parece binario; cleanup de temps; desconexión mid-edit detiene watchers y no sube.
+* **Preferencia**: campo Settings “Editor externo preferido” persistido en SQLite (`app_preferences`).
+
+### 📋 Fase 3b (futuro / diferido): Editor Monaco integrado
+* Monaco nativo en el workspace (buscar/reemplazar, sintaxis, etc.) y posibles flujos de re-subida desde pestaña integrada.
+* **Fuera del alcance de Fase 3** entregable; no bloquea el flujo de editor externo.
 
 ---
 

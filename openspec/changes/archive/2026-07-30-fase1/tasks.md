@@ -44,3 +44,11 @@
 
 - [x] 7.1 Actualizar el archivo `README.md` maestro con instrucciones de instalación, dependencias agregadas (rusqlite, ssh2, xterm.js) y ejecución.
 
+## 8. Fix: Quitar Neon Glow (aprobado vía preview)
+
+Referencia: `docs/design/preview-no-glow.html` (modo Sin glow).
+
+- [x] 8.1 Refactor UI: en `app/src/styles.css`, eliminar neon glow (`text-shadow`/`box-shadow` con `--glow-*` y sombras rosa/cian/verde de resplandor). Dejar acentos planos y conservar `--glass-shadow` solo como profundidad de panel.
+- [x] 8.2 Actualizar `docs/design/DESIGN.md`: retirar el principio/tokens de neon glow; documentar acentos planos alineados al preview aprobado.
+- [x] 8.3 Verificación desktop-ui (AGENT MUST EXECUTE): contrastar la app con el preview sin glow y generar `openspec/changes/fase1/reports/YYYY-MM-DD-step-no-glow-ui-verification.md`.
+

@@ -23,40 +23,63 @@
         <!-- Pestañas de Navegación Lateral (Servidores / Archivos) -->
         <div class="sidebar-tabs">
           <button id="tab-btn-servers" class="sidebar-tab-btn active">Servidores</button>
-          <button id="tab-btn-files" class="sidebar-tab-btn" disabled>Archivos</button>
+          <button id="tab-btn-files" class="sidebar-tab-btn">Archivos</button>
         </div>
 
         <!-- Contenedor del panel activo -->
         <div class="sidebar-content">
           <!-- Panel de Perfiles de Conexión -->
           <div id="panel-servers" class="sidebar-panel active">
-            <div class="panel-actions">
-              <button id="btn-new-profile" class="btn-primary">+ Nuevo Perfil</button>
+            <div class="panel-actions panel-actions--split">
+              <button id="btn-new-profile" class="btn-primary btn-primary-with-icon" type="button" title="Nueva conexión">Nueva conexión</button>
+              <button id="btn-new-folder" class="btn-icon-action" type="button" title="Agregar carpeta" aria-label="Agregar carpeta"></button>
             </div>
-            <div id="profile-list" class="profile-list">
+            <div id="profile-list" class="profile-list connection-tree">
               <!-- Cargado dinámicamente -->
-              <div class="profile-list-empty">No hay perfiles de conexión.</div>
+              <div class="profile-list-empty">No hay carpetas ni conexiones.</div>
             </div>
           </div>
 
           <!-- Panel de Explorador de Archivos (Fase 2) -->
           <div id="panel-files" class="sidebar-panel">
-            <div class="panel-placeholder">Explorador de Archivos (Fase 2)</div>
+            <div id="files-empty" class="profile-list-empty">Conecta un servidor para explorar archivos remotos.</div>
+            <div id="files-toolbar" class="files-toolbar" style="display: none;">
+              <button type="button" id="btn-files-up" class="btn-files-icon" title="Subir" aria-label="Subir"></button>
+              <input id="files-cwd-input" class="files-cwd-input" type="text" spellcheck="false" placeholder="/ruta/remota" title="Ruta remota" />
+              <button type="button" id="btn-files-go" class="btn-files-icon" title="Ir" aria-label="Ir"></button>
+              <button type="button" id="btn-files-refresh" class="btn-files-icon" title="Actualizar" aria-label="Actualizar"></button>
+            </div>
+            <div id="files-status" class="files-status" style="display: none;"></div>
+            <div id="files-tree" class="files-tree" style="display: none;"></div>
+            <ul id="files-context-menu" class="files-context-menu" style="display: none;">
+              <li data-action="open-terminal">Abrir en Terminal</li>
+            </ul>
           </div>
         </div>
 
-        <!-- Panel de Configuración Rápida en Sidebar (Fondo y Opacidad) -->
+        <!-- Panel de Configuración Rápida en Sidebar -->
         <div class="sidebar-footer">
           <div class="config-section">
-            <label class="config-label">Fondo de Interfaz</label>
+            <label class="config-label" for="config-editor-path">Editor externo preferido</label>
             <div class="config-row">
-              <input type="text" id="config-bg-url" placeholder="URL o ruta de imagen..." />
-              <button id="btn-apply-bg" class="btn-secondary">Aplicar</button>
+              <input
+                id="config-editor-path"
+                type="text"
+                spellcheck="false"
+                placeholder="Ruta del ejecutable (vacío = asociación del SO)"
+              />
+              <button type="button" id="btn-save-editor-pref" class="btn-secondary">Guardar</button>
             </div>
-            <label class="config-label">Opacidad de Capa: <span id="opacity-val">0.30</span></label>
-            <input type="range" id="config-bg-opacity" min="0.10" max="0.40" step="0.05" value="0.30" />
+            <label class="config-label" for="config-bg-url">Fondo</label>
+            <div class="config-row">
+              <input id="config-bg-url" type="text" spellcheck="false" placeholder="URL o ruta de imagen" />
+              <button type="button" id="btn-apply-bg" class="btn-secondary">Aplicar</button>
+            </div>
+            <label class="config-label" for="config-bg-opacity">Opacidad <span id="opacity-val">0.30</span></label>
+            <input id="config-bg-opacity" type="range" min="0" max="1" step="0.01" value="0.30" />
           </div>
         </div>
+
       </aside>
 
       <!-- Contenedor Principal (Terminales / Editor) -->
@@ -87,7 +110,8 @@
         <h2 id="modal-title">Nuevo Perfil de Servidor</h2>
         <form id="profile-form">
           <input type="hidden" id="profile-id" />
-          
+          <input type="hidden" id="profile-folder-id" />
+
           <div class="form-group">
             <label for="prof-name">Nombre del Perfil</label>
             <input type="text" id="prof-name" required placeholder="Ej. Servidor de Producción" />

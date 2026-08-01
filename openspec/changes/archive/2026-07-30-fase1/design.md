@@ -49,3 +49,15 @@ Este documento técnico de diseño describe la implementación de la Fase 1 de *
 
 **Directiva:** La tipografía de la terminal no debe ser estática en TypeScript. Se debe leer el valor de la variable `--font-mono` definida en el sistema de diseño usando `getComputedStyle(document.documentElement).getPropertyValue('--font-mono')` en tiempo de ejecución. Esto garantiza compatibilidad absoluta con temas dinámicos.
 
+### Corrección de Look: Sin Neon Glow (Fix)
+
+**Contexto:** La UI Fase 1 aplicó `text-shadow` / `box-shadow` con tokens `--glow-*`, lo que produce un look demasiado “neón luminoso”. El usuario aprobó el preview `docs/design/preview-no-glow.html` (modo **Sin glow** por defecto).
+
+**Directiva:**
+- Mantener la paleta Cyber-Sakura (rosa, cian, verde de estado) como **acentos planos**.
+- Eliminar neon glow de la UI de producción: `--glow-sakura`, `--glow-cyan`, `--glow-success`, `--glow-error` (y usos equivalentes) deben ser `none` o retirarse; no usar `text-shadow`/`box-shadow` de resplandor en títulos, tabs, botones, perfiles, focus ni status dots.
+- Se permite `--glass-shadow` solo como sombra de profundidad en paneles (no glow de color).
+- Actualizar el SSOT `docs/design/DESIGN.md` para que deje de exigir neon glow como principio y documente acentos planos.
+- Referencia visual de aceptación: `docs/design/preview-no-glow.html` en modo sin glow.
+- No reimplementar layout del mock Stitch (explorer, snippets, toast, mascota) en este fix — solo quitar glow.
+

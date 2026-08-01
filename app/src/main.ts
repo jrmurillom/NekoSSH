@@ -4,10 +4,19 @@ import { listen } from "@tauri-apps/api/event";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
+import { AppIcons, icon, setButtonIcon } from "./icons";
+import { alertDialog, confirmDialog, showContextMenu } from "./overlays";
 
 // --- Interfaces ---
+interface ConnectionFolder {
+  id?: number;
+  name: string;
+  sort_order: number;
+}
+
 interface ConnectionProfile {
   id?: number;
+  folder_id?: number;
   name: string;
   host: string;
   port: number;
@@ -25,11 +34,14 @@ interface ConnectionProfile {
 interface ActiveTerminal {
   id: string;
   profileName: string;
+  /** Snapshot / profile used to open (and reconnect) this tab */
+  profile: ConnectionProfile;
   term: Terminal;
   fitAddon: FitAddon;
   panelEl: HTMLElement;
   tabEl: HTMLElement;
   isConnected: boolean;
+  isReconnecting: boolean;
 }
 
 interface SshEventPayload {
@@ -42,9 +54,39 @@ interface SshClosedPayload {
   error?: string;
 }
 
+interface ExternalEditProbe {
+  size: number;
+  too_large: boolean;
+  looks_binary: boolean;
+  basename: string;
+}
+
+interface EditSessionChangedPayload {
+  edit_id: string;
+  terminal_id: string;
+  remote_path: string;
+  reason: string;
+}
+
+interface EditSessionDisconnectedPayload {
+  terminal_id: string;
+  edit_ids: string[];
+  message: string;
+}
+
+/** edit_id con dialog A1 de subida abierto (coalesce en frontend). */
+const editUploadConfirmOpen = new Set<string>();
+
 // --- State Management ---
+let currentFolders: ConnectionFolder[] = [];
 let currentProfiles: ConnectionProfile[] = [];
 let activeProfileId: number | null = null;
+/** Folder context for "new connection" and highlight */
+let activeFolderId: number | null = null;
+const expandedFolderIds = new Set<number>();
+let renamingFolderId: number | null = null;
+let renamingProfileId: number | null = null;
+let foldersExpandSeeded = false;
 
 const activeTerminals = new Map<string, ActiveTerminal>();
 let currentActiveTerminalId: string | null = null;
@@ -55,6 +97,8 @@ let configBgUrlInput: HTMLInputElement | null = null;
 let configBgOpacityInput: HTMLInputElement | null = null;
 let opacityValLabel: HTMLElement | null = null;
 let btnApplyBg: HTMLButtonElement | null = null;
+let configEditorPathInput: HTMLInputElement | null = null;
+let btnSaveEditorPref: HTMLButtonElement | null = null;
 
 // Modal Elements
 let profileModal: HTMLElement | null = null;
@@ -77,9 +121,10 @@ let tunLocalPortInput: HTMLInputElement | null = null;
 let tunDestInput: HTMLInputElement | null = null;
 
 let btnNewProfile: HTMLButtonElement | null = null;
+let btnNewFolder: HTMLButtonElement | null = null;
 let btnCancelProfile: HTMLButtonElement | null = null;
-
 let profileListContainer: HTMLElement | null = null;
+let profileFolderIdInput: HTMLInputElement | null = null;
 
 // Tabs sidebar
 let tabBtnServers: HTMLButtonElement | null = null;
@@ -87,18 +132,54 @@ let tabBtnFiles: HTMLButtonElement | null = null;
 let panelServers: HTMLElement | null = null;
 let panelFiles: HTMLElement | null = null;
 
+// File explorer (Fase 2)
+let filesEmpty: HTMLElement | null = null;
+let filesToolbar: HTMLElement | null = null;
+let filesCwdInput: HTMLInputElement | null = null;
+let filesStatus: HTMLElement | null = null;
+let filesTree: HTMLElement | null = null;
+let filesContextMenu: HTMLElement | null = null;
+let btnFilesUp: HTMLButtonElement | null = null;
+let btnFilesGo: HTMLButtonElement | null = null;
+let btnFilesRefresh: HTMLButtonElement | null = null;
+
+interface SftpDirEntry {
+  name: string;
+  path: string;
+  is_dir: boolean;
+  size: number;
+}
+
+interface ExplorerNodeState {
+  path: string;
+  name: string;
+  isDir: boolean;
+  size: number;
+  expanded: boolean;
+  loaded: boolean;
+  children: ExplorerNodeState[];
+}
+
+let explorerRoot: ExplorerNodeState | null = null;
+let explorerCwd = "";
+let explorerBoundTerminalId: string | null = null;
+let contextMenuPath: string | null = null;
+let explorerLoading = false;
+
 // Terminal layout elements
 let mainDisplayArea: HTMLElement | null = null;
 let terminalTabsList: HTMLElement | null = null;
 let btnCloseAllTerminals: HTMLButtonElement | null = null;
 
-// --- Initialize App Settings (Background & Opacity) ---
+// --- Initialize App Settings (Background & Opacity + editor externo) ---
 function initSettings() {
   bgImageLayer = document.getElementById("bg-image-layer");
   configBgUrlInput = document.getElementById("config-bg-url") as HTMLInputElement;
   configBgOpacityInput = document.getElementById("config-bg-opacity") as HTMLInputElement;
   opacityValLabel = document.getElementById("opacity-val");
   btnApplyBg = document.getElementById("btn-apply-bg") as HTMLButtonElement;
+  configEditorPathInput = document.getElementById("config-editor-path") as HTMLInputElement;
+  btnSaveEditorPref = document.getElementById("btn-save-editor-pref") as HTMLButtonElement;
 
   // Cargar de localStorage
   const savedBgUrl = localStorage.getItem("nekossh-bg-url") || "";
@@ -125,6 +206,33 @@ function initSettings() {
     localStorage.setItem("nekossh-bg-opacity", opacity.toString());
     applyBackgroundSettings(configBgUrlInput?.value.trim() || "", opacity);
   });
+
+  void loadPreferredEditorIntoUi();
+  btnSaveEditorPref?.addEventListener("click", () => {
+    void savePreferredEditorFromUi();
+  });
+}
+
+async function loadPreferredEditorIntoUi() {
+  try {
+    const path = await invoke<string>("get_preferred_external_editor_cmd");
+    if (configEditorPathInput) configEditorPathInput.value = path || "";
+  } catch (err) {
+    console.error("No se pudo cargar editor preferido:", err);
+  }
+}
+
+async function savePreferredEditorFromUi() {
+  const path = configEditorPathInput?.value.trim() || "";
+  try {
+    await invoke("set_preferred_external_editor_cmd", { path });
+    setExplorerStatus("Editor preferido guardado.");
+  } catch (err) {
+    await alertDialog({
+      title: "No se pudo guardar",
+      message: String(err),
+    });
+  }
 }
 
 function applyBackgroundSettings(url: string, opacity: number) {
@@ -146,6 +254,28 @@ function initTabs() {
   tabBtnFiles = document.getElementById("tab-btn-files") as HTMLButtonElement;
   panelServers = document.getElementById("panel-servers");
   panelFiles = document.getElementById("panel-files");
+  filesEmpty = document.getElementById("files-empty");
+  filesToolbar = document.getElementById("files-toolbar");
+  filesCwdInput = document.getElementById("files-cwd-input") as HTMLInputElement;
+  filesStatus = document.getElementById("files-status");
+  filesTree = document.getElementById("files-tree");
+  filesContextMenu = document.getElementById("files-context-menu");
+  btnFilesUp = document.getElementById("btn-files-up") as HTMLButtonElement;
+  btnFilesGo = document.getElementById("btn-files-go") as HTMLButtonElement;
+  btnFilesRefresh = document.getElementById("btn-files-refresh") as HTMLButtonElement;
+
+  if (btnFilesUp) {
+    setButtonIcon(btnFilesUp, AppIcons.arrowUp);
+    btnFilesUp.setAttribute("aria-label", "Subir");
+  }
+  if (btnFilesGo) {
+    setButtonIcon(btnFilesGo, AppIcons.arrowRight);
+    btnFilesGo.setAttribute("aria-label", "Ir");
+  }
+  if (btnFilesRefresh) {
+    setButtonIcon(btnFilesRefresh, AppIcons.refreshCw);
+    btnFilesRefresh.setAttribute("aria-label", "Actualizar");
+  }
 
   tabBtnServers?.addEventListener("click", () => {
     tabBtnServers?.classList.add("active");
@@ -159,6 +289,558 @@ function initTabs() {
     tabBtnServers?.classList.remove("active");
     panelFiles?.classList.add("active");
     panelServers?.classList.remove("active");
+    void refreshExplorerForActiveTerminal();
+  });
+
+  btnFilesUp?.addEventListener("click", () => {
+    void goExplorerUp();
+  });
+
+  btnFilesGo?.addEventListener("click", () => {
+    void goExplorerToInputPath();
+  });
+
+  filesCwdInput?.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter") {
+      ev.preventDefault();
+      void goExplorerToInputPath();
+    }
+  });
+
+  btnFilesRefresh?.addEventListener("click", () => {
+    void refreshExplorerAtCurrentPath();
+  });
+
+  filesContextMenu?.querySelectorAll("li").forEach((li) => {
+    li.addEventListener("click", () => {
+      const action = (li as HTMLElement).dataset.action;
+      if (action === "open-terminal" && contextMenuPath) {
+        void openPathInTerminal(contextMenuPath);
+      }
+      hideContextMenu();
+    });
+  });
+
+  document.addEventListener("click", () => hideContextMenu());
+}
+
+function hideContextMenu() {
+  if (filesContextMenu) filesContextMenu.style.display = "none";
+  contextMenuPath = null;
+}
+
+function normalizeRemotePath(path: string): string {
+  if (!path || path === ".") return path || ".";
+  if (path === "/") return "/";
+  return path.replace(/\/+$/, "") || "/";
+}
+
+function pathsEqual(a: string, b: string): boolean {
+  return normalizeRemotePath(a) === normalizeRemotePath(b);
+}
+
+function parentRemotePath(path: string): string | null {
+  const n = normalizeRemotePath(path);
+  if (!n || n === "/" || n === ".") return null;
+  const parts = n.split("/").filter(Boolean);
+  if (parts.length === 0) return null;
+  parts.pop();
+  return parts.length === 0 ? "/" : `/${parts.join("/")}`;
+}
+
+function setExplorerStatus(message: string, isError = false) {
+  if (!filesStatus) return;
+  if (!message) {
+    filesStatus.style.display = "none";
+    filesStatus.textContent = "";
+    filesStatus.classList.remove("error");
+    return;
+  }
+  filesStatus.style.display = "block";
+  filesStatus.textContent = message;
+  filesStatus.classList.toggle("error", isError);
+}
+
+function updateUpButton() {
+  if (!btnFilesUp) return;
+  btnFilesUp.disabled = parentRemotePath(explorerCwd || filesCwdInput?.value || "") === null;
+}
+
+function showExplorerEmpty(message: string) {
+  if (filesEmpty) {
+    filesEmpty.style.display = "block";
+    filesEmpty.textContent = message;
+  }
+  if (filesToolbar) filesToolbar.style.display = "none";
+  if (filesStatus) filesStatus.style.display = "none";
+  if (filesTree) {
+    filesTree.style.display = "none";
+    filesTree.innerHTML = "";
+  }
+}
+
+function showExplorerReady() {
+  if (filesEmpty) filesEmpty.style.display = "none";
+  if (filesToolbar) filesToolbar.style.display = "flex";
+  if (filesTree) filesTree.style.display = "flex";
+}
+
+function setExplorerPathDisplay(path: string) {
+  explorerCwd = normalizeRemotePath(path);
+  if (filesCwdInput) {
+    filesCwdInput.value = explorerCwd;
+    filesCwdInput.setAttribute("title", explorerCwd);
+  }
+  updateUpButton();
+}
+
+async function goExplorerToInputPath() {
+  if (!currentActiveTerminalId) return;
+  const path = (filesCwdInput?.value || "").trim();
+  if (!path) return;
+  try {
+    showExplorerReady();
+    setExplorerStatus("");
+    setExplorerPathDisplay(path);
+    await loadExplorerAt(normalizeRemotePath(path), true);
+  } catch (err) {
+    console.error("Error al Ir a ruta:", err);
+    setExplorerStatus(`No se pudo listar: ${path}`, true);
+  }
+}
+
+async function goExplorerUp() {
+  const parent = parentRemotePath(explorerCwd || filesCwdInput?.value || "");
+  if (!parent) return;
+  setExplorerPathDisplay(parent);
+  try {
+    setExplorerStatus("");
+    await loadExplorerAt(parent, true);
+  } catch (err) {
+    console.error("Error al subir:", err);
+    setExplorerStatus("No se pudo subir al directorio padre", true);
+  }
+}
+
+async function refreshExplorerAtCurrentPath() {
+  const path = normalizeRemotePath((filesCwdInput?.value || explorerCwd || ".").trim() || ".");
+  try {
+    setExplorerPathDisplay(path);
+    setExplorerStatus("");
+    await loadExplorerAt(path, true);
+  } catch (err) {
+    console.error("Error al actualizar explorador:", err);
+    setExplorerStatus("Error al actualizar", true);
+  }
+}
+
+async function refreshExplorerForActiveTerminal(forceReload = false) {
+  const termId = currentActiveTerminalId;
+  const term = termId ? activeTerminals.get(termId) : undefined;
+  if (!termId || !term?.isConnected) {
+    showExplorerEmpty("Conecta un servidor para explorar archivos remotos.");
+    explorerBoundTerminalId = null;
+    explorerRoot = null;
+    return;
+  }
+
+  showExplorerReady();
+  explorerBoundTerminalId = termId;
+
+  const path = normalizeRemotePath(explorerCwd || ".");
+  setExplorerPathDisplay(path === "." ? filesCwdInput?.value || "." : path);
+  try {
+    setExplorerStatus("");
+    await loadExplorerAt(path, forceReload || !explorerRoot || !pathsEqual(explorerRoot.path, path));
+  } catch (err) {
+    console.error("Error al refrescar explorador:", err);
+    showExplorerEmpty("No se pudo listar el filesystem remoto.");
+  }
+}
+
+async function openExplorerFolder(path: string) {
+  setExplorerPathDisplay(path);
+  setExplorerStatus("");
+  await loadExplorerAt(normalizeRemotePath(path), true);
+}
+
+async function loadExplorerAt(path: string, force = false) {
+  const normalized = normalizeRemotePath(path);
+  if (!force && explorerRoot && pathsEqual(explorerRoot.path, normalized) && explorerRoot.loaded) {
+    renderExplorerTree();
+    return;
+  }
+  explorerLoading = true;
+  setExplorerStatus("Cargando…");
+  renderExplorerTree();
+  try {
+    const entries = await invoke<SftpDirEntry[]>("sftp_list_dir", {
+      terminalId: currentActiveTerminalId,
+      path: normalized
+    });
+    explorerRoot = {
+      path: normalized,
+      name: normalized === "/" || normalized === "." ? normalized : normalized.split("/").filter(Boolean).pop() || normalized,
+      isDir: true,
+      size: 0,
+      expanded: true,
+      loaded: true,
+      children: entries.map((e) => ({
+        path: e.path,
+        name: e.name,
+        isDir: e.is_dir,
+        size: e.size ?? 0,
+        expanded: false,
+        loaded: false,
+        children: []
+      }))
+    };
+    setExplorerStatus("");
+  } catch (err) {
+    explorerRoot = null;
+    setExplorerStatus(`Error: ${String(err)}`, true);
+    throw err;
+  } finally {
+    explorerLoading = false;
+    renderExplorerTree();
+    updateUpButton();
+  }
+}
+
+async function toggleExplorerNode(node: ExplorerNodeState) {
+  if (!node.isDir || !currentActiveTerminalId) return;
+  if (!node.expanded) {
+    if (!node.loaded) {
+      setExplorerStatus("Cargando…");
+      try {
+        const entries = await invoke<SftpDirEntry[]>("sftp_list_dir", {
+          terminalId: currentActiveTerminalId,
+          path: node.path
+        });
+        node.children = entries.map((e) => ({
+          path: e.path,
+          name: e.name,
+          isDir: e.is_dir,
+          size: e.size ?? 0,
+          expanded: false,
+          loaded: false,
+          children: []
+        }));
+        node.loaded = true;
+        setExplorerStatus("");
+      } catch (err) {
+        setExplorerStatus(`Error al expandir: ${node.name}`, true);
+        console.error(err);
+        return;
+      }
+    }
+    node.expanded = true;
+  } else {
+    node.expanded = false;
+  }
+  renderExplorerTree();
+}
+
+function renderExplorerTree() {
+  if (!filesTree) return;
+  filesTree.innerHTML = "";
+  if (explorerLoading && !explorerRoot) {
+    const el = document.createElement("div");
+    el.className = "files-tree-empty";
+    el.textContent = "Cargando…";
+    filesTree.appendChild(el);
+    return;
+  }
+  if (!explorerRoot) return;
+  if (explorerRoot.children.length === 0) {
+    const el = document.createElement("div");
+    el.className = "files-tree-empty";
+    el.textContent = "(vacío)";
+    filesTree.appendChild(el);
+    return;
+  }
+  explorerRoot.children.forEach((child) => {
+    filesTree!.appendChild(buildExplorerNodeEl(child));
+  });
+}
+
+function buildExplorerNodeEl(node: ExplorerNodeState): HTMLElement {
+  const wrap = document.createElement("div");
+  wrap.className = "files-node";
+
+  const row = document.createElement("div");
+  row.className = "files-node-row";
+  if (pathsEqual(node.path, explorerCwd)) row.classList.add("active");
+
+  const toggle = document.createElement("span");
+  toggle.className = "files-node-toggle";
+  if (node.isDir) {
+    toggle.replaceChildren(
+      icon(node.expanded ? AppIcons.chevronDown : AppIcons.chevronRight, {
+        size: 14,
+        className: "icon--sm",
+      }),
+    );
+    toggle.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      void toggleExplorerNode(node);
+    });
+  } else {
+    toggle.classList.add("is-spacer");
+  }
+  row.appendChild(toggle);
+
+  const iconEl = document.createElement("span");
+  iconEl.className = "files-node-icon";
+  iconEl.replaceChildren(
+    icon(node.isDir ? AppIcons.folder : AppIcons.file, {
+      size: 14,
+      className: "icon--sm",
+    }),
+  );
+  row.appendChild(iconEl);
+
+  const label = document.createElement("span");
+  label.className = "files-node-label";
+  label.textContent = node.name;
+  row.appendChild(label);
+
+  row.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    if (node.isDir) {
+      void openExplorerFolder(node.path).catch((err) => {
+        console.error(err);
+        setExplorerStatus(`No se pudo abrir: ${node.name}`, true);
+      });
+    }
+  });
+
+  row.addEventListener("dblclick", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (node.isDir) {
+      // Carpeta: navegación ya cubierta por click; no iniciar edición
+      return;
+    }
+    void beginExternalEdit(node);
+  });
+
+  row.addEventListener("contextmenu", async (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    hideContextMenu();
+    if (node.isDir) {
+      if (!filesContextMenu) return;
+      contextMenuPath = node.path;
+      filesContextMenu.style.display = "block";
+      filesContextMenu.style.left = `${ev.clientX}px`;
+      filesContextMenu.style.top = `${ev.clientY}px`;
+      return;
+    }
+    const action = await showContextMenu(ev.clientX, ev.clientY, [
+      { id: "edit", label: "Editar", icon: AppIcons.pencil },
+    ]);
+    if (action === "edit") {
+      void beginExternalEdit(node);
+    }
+  });
+
+  wrap.appendChild(row);
+
+  if (node.isDir && node.expanded) {
+    const kids = document.createElement("div");
+    kids.className = "files-node-children";
+    if (node.children.length === 0) {
+      const empty = document.createElement("div");
+      empty.className = "files-tree-empty";
+      empty.textContent = "(vacío)";
+      kids.appendChild(empty);
+    } else {
+      node.children.forEach((child) => kids.appendChild(buildExplorerNodeEl(child)));
+    }
+    wrap.appendChild(kids);
+  }
+
+  return wrap;
+}
+
+async function openPathInTerminal(path: string) {
+  if (!currentActiveTerminalId) return;
+  try {
+    const cwd = await invoke<string>("ssh_cd", {
+      terminalId: currentActiveTerminalId,
+      path
+    });
+    setExplorerPathDisplay(cwd || path);
+    await loadExplorerAt(explorerCwd, true);
+  } catch (err) {
+    console.error("Error en Abrir en Terminal:", err);
+  }
+}
+
+/** Flujo FileZilla: probe → (aviso binario) → download temp → editor → watch → A1 subir. */
+async function beginExternalEdit(node: ExplorerNodeState) {
+  if (node.isDir || !currentActiveTerminalId) return;
+  const terminalId = currentActiveTerminalId;
+  setExplorerStatus(`Preparando edición: ${node.name}…`);
+  try {
+    const probe = await invoke<ExternalEditProbe>("probe_external_edit", {
+      terminalId,
+      remotePath: node.path,
+    });
+    if (probe.too_large) {
+      await alertDialog({
+        title: "Archivo demasiado grande",
+        message:
+          "El archivo supera el límite de 10 MiB para edición externa en esta versión.",
+      });
+      setExplorerStatus("");
+      return;
+    }
+    if (probe.looks_binary) {
+      const ok = await confirmDialog({
+        title: "Archivo posiblemente binario",
+        message: "El archivo parece binario. ¿Abrir de todos modos?",
+        confirmLabel: "Abrir",
+        cancelLabel: "Cancelar",
+      });
+      if (!ok) {
+        setExplorerStatus("");
+        return;
+      }
+    }
+    await invoke("start_external_edit", {
+      terminalId,
+      remotePath: node.path,
+    });
+    setExplorerStatus(`Editando: ${probe.basename}`);
+  } catch (err) {
+    console.error("Error al iniciar edición externa:", err);
+    await alertDialog({
+      title: "No se pudo editar",
+      message: String(err),
+    });
+    setExplorerStatus(`Error al editar: ${node.name}`, true);
+  }
+}
+
+type EditUploadErrorPayload = {
+  kind: string;
+  message: string;
+  elevatable: boolean;
+};
+
+/** Normaliza el reject de invoke (objeto Tauri o JSON string). */
+function asEditUploadError(err: unknown): EditUploadErrorPayload | null {
+  if (err && typeof err === "object" && "elevatable" in err && "kind" in err && "message" in err) {
+    const o = err as Record<string, unknown>;
+    return {
+      kind: String(o.kind),
+      message: String(o.message),
+      elevatable: Boolean(o.elevatable),
+    };
+  }
+  if (typeof err === "string") {
+    try {
+      const parsed = JSON.parse(err) as unknown;
+      return asEditUploadError(parsed);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+function uploadErrorMessage(err: unknown): string {
+  return asEditUploadError(err)?.message ?? String(err);
+}
+
+async function handleEditSessionChanged(payload: EditSessionChangedPayload) {
+  if (payload.reason !== "content_changed") return;
+  if (editUploadConfirmOpen.has(payload.edit_id)) return;
+  editUploadConfirmOpen.add(payload.edit_id);
+  try {
+    const remotePath = payload.remote_path;
+    const slash = remotePath.lastIndexOf("/");
+    const detailFilename =
+      slash >= 0 ? remotePath.slice(slash + 1) || remotePath : remotePath;
+    const ok = await confirmDialog({
+      title: "Subir cambios",
+      message: "¿Subir al servidor?",
+      detailFilename,
+      detailFullPath: remotePath,
+      confirmLabel: "Subir",
+      cancelLabel: "Cancelar",
+    });
+    if (!ok) {
+      await invoke("dismiss_edit_change", { editId: payload.edit_id });
+      return;
+    }
+    try {
+      await invoke("confirm_edit_upload", { editId: payload.edit_id });
+      setExplorerStatus("Archivo subido al servidor.");
+    } catch (err) {
+      const structured = asEditUploadError(err);
+      if (structured?.elevatable) {
+        const withSudo = await confirmDialog({
+          title: "Error al subir",
+          message:
+            "No hay permiso para escribir en el servidor. ¿Subir con sudo? (sin contraseña en la app; solo si el host lo permite sin prompt)",
+          detailFilename,
+          detailFullPath: remotePath,
+          confirmLabel: "Subir con sudo",
+          cancelLabel: "Cancelar",
+          danger: false,
+        });
+        if (!withSudo) {
+          setExplorerStatus("Subida cancelada; cambios locales conservados.", true);
+          return;
+        }
+        try {
+          await invoke("edit_session_upload_with_sudo", {
+            editId: payload.edit_id,
+          });
+          setExplorerStatus("Archivo subido al servidor (sudo).");
+        } catch (sudoErr) {
+          const sudoMsg = uploadErrorMessage(sudoErr);
+          await alertDialog({
+            title: "Error al subir con sudo",
+            message: sudoMsg,
+          });
+          setExplorerStatus("Error al subir con sudo; cambios locales conservados.", true);
+        }
+        return;
+      }
+      await alertDialog({
+        title: "Error al subir",
+        message: uploadErrorMessage(err),
+      });
+      setExplorerStatus("Error al subir cambios", true);
+    }
+  } finally {
+    editUploadConfirmOpen.delete(payload.edit_id);
+  }
+}
+
+function initExternalEditListeners() {
+  void listen<EditSessionChangedPayload>("edit-session-changed", (event) => {
+    void handleEditSessionChanged(event.payload);
+  });
+  void listen<EditSessionDisconnectedPayload>("edit-session-disconnected", (event) => {
+    const hadUploadConfirm = event.payload.edit_ids.some((id) =>
+      editUploadConfirmOpen.has(id),
+    );
+    for (const id of event.payload.edit_ids) {
+      editUploadConfirmOpen.delete(id);
+    }
+    setExplorerStatus(event.payload.message, true);
+    // No apilar A1 sobre el confirm de subida abierto (mismo root de chrome).
+    if (!hadUploadConfirm) {
+      void alertDialog({
+        title: "Sesión desconectada",
+        message: event.payload.message,
+      });
+    }
   });
 }
 
@@ -166,6 +848,7 @@ function initTabs() {
 window.addEventListener("DOMContentLoaded", () => {
   initSettings();
   initTabs();
+  initExternalEditListeners();
   
   // Elementos del Terminal Layout
   mainDisplayArea = document.getElementById("main-display-area");
@@ -197,12 +880,31 @@ window.addEventListener("DOMContentLoaded", () => {
   tunDestInput = document.getElementById("tun-dest") as HTMLInputElement;
 
   btnNewProfile = document.getElementById("btn-new-profile") as HTMLButtonElement;
+  btnNewFolder = document.getElementById("btn-new-folder") as HTMLButtonElement;
   btnCancelProfile = document.getElementById("btn-cancel-profile") as HTMLButtonElement;
   profileListContainer = document.getElementById("profile-list");
+  profileFolderIdInput = document.getElementById("profile-folder-id") as HTMLInputElement;
 
-  // Mostrar modal de creación
+  if (btnNewProfile) {
+    const label = document.createElement("span");
+    label.textContent = "Nueva conexión";
+    btnNewProfile.replaceChildren(
+      icon(AppIcons.plus, { size: 16, className: "icon--md" }),
+      label,
+    );
+  }
+
+  if (btnNewFolder) {
+    setButtonIcon(btnNewFolder, AppIcons.folderPlus, { size: 18, className: "icon--md" });
+  }
+
+  // Mostrar modal de creación (usa carpeta activa o General)
   btnNewProfile?.addEventListener("click", () => {
-    openProfileModal();
+    openProfileModal(undefined, activeFolderId ?? undefined);
+  });
+
+  btnNewFolder?.addEventListener("click", () => {
+    void createNewFolder();
   });
 
   // Cancelar modal
@@ -252,6 +954,27 @@ window.addEventListener("resize", () => {
 });
 
 // --- Setup SSH Event Listeners ---
+function setTerminalConnectionStatus(
+  activeTerm: ActiveTerminal,
+  state: "connecting" | "connected" | "disconnected" | "error",
+  text?: string,
+) {
+  const statusIndicator = activeTerm.panelEl.querySelector(".status-dot");
+  const statusText = activeTerm.panelEl.querySelector(".terminal-status-text");
+  if (statusIndicator) {
+    statusIndicator.className = `status-dot ${state}`;
+  }
+  if (statusText) {
+    const defaults: Record<typeof state, string> = {
+      connecting: "Conectando...",
+      connected: "Conectado al servidor remoto",
+      disconnected: "Desconectado — Ctrl+R",
+      error: "Error de Conexión — Ctrl+R",
+    };
+    statusText.textContent = text ?? defaults[state];
+  }
+}
+
 function setupSshEventListeners() {
   // Escuchar por conexión establecida
   listen<SshEventPayload>("ssh-connected", (event) => {
@@ -259,15 +982,8 @@ function setupSshEventListeners() {
     const activeTerm = activeTerminals.get(termId);
     if (activeTerm) {
       activeTerm.isConnected = true;
-      const statusIndicator = activeTerm.panelEl.querySelector(".status-dot");
-      const statusText = activeTerm.panelEl.querySelector(".terminal-status-text");
-      
-      if (statusIndicator) {
-        statusIndicator.className = "status-dot connected";
-      }
-      if (statusText) {
-        statusText.textContent = "Conectado al servidor remoto";
-      }
+      activeTerm.isReconnecting = false;
+      setTerminalConnectionStatus(activeTerm, "connected");
 
       // Limpiar terminal de mensajes previos
       activeTerm.term.clear();
@@ -282,6 +998,11 @@ function setupSshEventListeners() {
           rows: activeTerm.term.rows
         }).catch(err => console.error("Error al redimensionar PTY inicial:", err));
       }, 100);
+
+      if (termId === currentActiveTerminalId) {
+        // No auto-listar SFTP al conectar: compite con el PTY y puede tumbar el transport.
+        // El usuario abre Archivos / Actualizar cuando quiera.
+      }
     }
   });
 
@@ -301,17 +1022,17 @@ function setupSshEventListeners() {
     const errorMsg = event.payload.error || "Error desconocido";
     const activeTerm = activeTerminals.get(termId);
     if (activeTerm) {
-      activeTerm.term.write(`\r\n\x1b[31;1m[ERROR] ${errorMsg}\x1b[0m\r\n`);
-      const statusIndicator = activeTerm.panelEl.querySelector(".status-dot");
-      const statusText = activeTerm.panelEl.querySelector(".terminal-status-text");
-      
-      if (statusIndicator) {
-        statusIndicator.className = "status-dot error";
-      }
-      if (statusText) {
-        statusText.textContent = "Error de Conexión";
-      }
+      activeTerm.isReconnecting = false;
+      activeTerm.term.write(
+        `\r\n\x1b[31;1m[ERROR] ${errorMsg}\x1b[0m\r\n\x1b[33mCtrl+R para reconectar\x1b[0m\r\n`,
+      );
+      setTerminalConnectionStatus(activeTerm, "error");
       activeTerm.isConnected = false;
+      if (termId === currentActiveTerminalId || termId === explorerBoundTerminalId) {
+        showExplorerEmpty("Conecta un servidor para explorar archivos remotos.");
+        explorerRoot = null;
+        explorerBoundTerminalId = null;
+      }
     }
   });
 
@@ -320,32 +1041,36 @@ function setupSshEventListeners() {
     const termId = event.payload.terminal_id;
     const activeTerm = activeTerminals.get(termId);
     if (activeTerm) {
+      activeTerm.isReconnecting = false;
       if (activeTerm.isConnected) {
-        activeTerm.term.write(`\r\n\x1b[33;1m[Conexión Cerrada por el Servidor]\x1b[0m\r\n`);
+        const detail = event.payload.error ? ` (${event.payload.error})` : "";
+        activeTerm.term.write(
+          `\r\n\x1b[33;1m[Conexión cerrada]${detail}\x1b[0m\r\n\x1b[33mCtrl+R para reconectar\x1b[0m\r\n`,
+        );
       }
-      const statusIndicator = activeTerm.panelEl.querySelector(".status-dot");
-      const statusText = activeTerm.panelEl.querySelector(".terminal-status-text");
-      
-      if (statusIndicator) {
-        statusIndicator.className = "status-dot";
-      }
-      if (statusText) {
-        statusText.textContent = "Desconectado";
-      }
+      setTerminalConnectionStatus(activeTerm, "disconnected");
       activeTerm.isConnected = false;
+      if (termId === currentActiveTerminalId || termId === explorerBoundTerminalId) {
+        showExplorerEmpty("Conecta un servidor para explorar archivos remotos.");
+        explorerRoot = null;
+        explorerBoundTerminalId = null;
+      }
     }
   });
 }
 
 // --- Modal Helper Functions ---
-function openProfileModal(profile?: ConnectionProfile) {
+function openProfileModal(profile?: ConnectionProfile, folderId?: number) {
   if (!profileModal || !profileForm || !modalTitle) return;
 
   profileForm.reset();
 
   if (profile) {
-    modalTitle.textContent = "Editar Perfil de Servidor";
+    modalTitle.textContent = "Editar conexión";
     if (profileIdInput) profileIdInput.value = profile.id?.toString() || "";
+    if (profileFolderIdInput) {
+      profileFolderIdInput.value = profile.folder_id?.toString() || "";
+    }
     if (profNameInput) profNameInput.value = profile.name;
     if (profHostInput) profHostInput.value = profile.host;
     if (profPortInput) profPortInput.value = profile.port.toString();
@@ -363,8 +1088,16 @@ function openProfileModal(profile?: ConnectionProfile) {
     toggleAuthFields(profile.auth_type);
     toggleTunnelFields(profile.tunnel_type);
   } else {
-    modalTitle.textContent = "Nuevo Perfil de Servidor";
+    modalTitle.textContent = "Nueva conexión";
     if (profileIdInput) profileIdInput.value = "";
+    const targetFolder =
+      folderId ??
+      activeFolderId ??
+      currentFolders[0]?.id ??
+      null;
+    if (profileFolderIdInput) {
+      profileFolderIdInput.value = targetFolder?.toString() || "";
+    }
     toggleAuthFields('password');
     toggleTunnelFields('none');
   }
@@ -411,7 +1144,27 @@ function toggleTunnelFields(tunnelType: string) {
 // --- CRUD Database Operations ---
 async function loadProfiles() {
   try {
-    currentProfiles = await invoke<ConnectionProfile[]>("get_profiles");
+    const [folders, profiles] = await Promise.all([
+      invoke<ConnectionFolder[]>("list_folders"),
+      invoke<ConnectionProfile[]>("get_profiles"),
+    ]);
+    currentFolders = folders;
+    currentProfiles = profiles;
+    if (!foldersExpandSeeded) {
+      for (const f of currentFolders) {
+        if (f.id !== undefined) expandedFolderIds.add(f.id);
+      }
+      foldersExpandSeeded = true;
+    }
+    // Keep expanded set in sync for newly created folders
+    for (const f of currentFolders) {
+      if (f.id !== undefined && !expandedFolderIds.has(f.id) && renamingFolderId === f.id) {
+        expandedFolderIds.add(f.id);
+      }
+    }
+    if (activeFolderId === null && currentFolders[0]?.id !== undefined) {
+      activeFolderId = currentFolders[0].id;
+    }
     renderProfileList();
   } catch (err) {
     console.error("Error al cargar perfiles:", err);
@@ -419,8 +1172,28 @@ async function loadProfiles() {
   }
 }
 
+async function createNewFolder() {
+  try {
+    const id = await invoke<number>("create_folder", {
+      name: "Nueva carpeta",
+      sort_order: currentFolders.length,
+    });
+    expandedFolderIds.add(id);
+    activeFolderId = id;
+    renamingFolderId = id;
+    await loadProfiles();
+  } catch (err) {
+    console.error("Error al crear carpeta:", err);
+    void alertDialog({
+      title: "Error",
+      message: "Error al crear la carpeta: " + err,
+    });
+  }
+}
+
 async function saveProfile() {
   const idStr = profileIdInput?.value;
+  const folderIdStr = profileFolderIdInput?.value;
   const profile: ConnectionProfile = {
     name: profNameInput?.value || "",
     host: profHostInput?.value || "",
@@ -428,7 +1201,8 @@ async function saveProfile() {
     username: profUsernameInput?.value || "",
     auth_type: (profAuthTypeSelect?.value as 'password' | 'key') || 'password',
     keepalive: parseInt(profKeepaliveInput?.value || "60"),
-    tunnel_type: (tunTypeSelect?.value as 'none' | 'local' | 'dynamic') || 'none'
+    tunnel_type: (tunTypeSelect?.value as 'none' | 'local' | 'dynamic') || 'none',
+    folder_id: folderIdStr ? parseInt(folderIdStr) : undefined,
   };
 
   if (idStr) {
@@ -459,20 +1233,71 @@ async function saveProfile() {
     await loadProfiles();
   } catch (err) {
     console.error("Error al guardar perfil:", err);
-    alert("Error al guardar el perfil: " + err);
+    void alertDialog({
+      title: "Error",
+      message: "Error al guardar el perfil: " + err,
+    });
   }
 }
 
-async function deleteProfile(id: number, event: Event) {
-  event.stopPropagation();
-  if (!confirm("¿Está seguro de que desea eliminar este perfil?")) return;
+async function deleteProfile(id: number) {
+  const ok = await confirmDialog({
+    title: "¿Eliminar conexión?",
+    message: "Se eliminará esta conexión guardada. No se puede deshacer.",
+    confirmLabel: "Eliminar",
+    danger: true,
+  });
+  if (!ok) return;
 
   try {
     await invoke("delete_profile", { id });
     await loadProfiles();
   } catch (err) {
     console.error("Error al eliminar perfil:", err);
-    alert("Error al eliminar el perfil: " + err);
+    await alertDialog({
+      title: "Error",
+      message: "Error al eliminar el perfil: " + err,
+    });
+  }
+}
+
+async function deleteFolder(folder: ConnectionFolder) {
+  if (folder.id === undefined) return;
+  let count = 0;
+  try {
+    count = await invoke<number>("get_folder_connection_count", { id: folder.id });
+  } catch {
+    count = currentProfiles.filter((p) => p.folder_id === folder.id).length;
+  }
+  const impact =
+    count === 0
+      ? folder.name
+      : `${folder.name} · ${count} conexión${count === 1 ? "" : "es"}`;
+  const ok = await confirmDialog({
+    title: "¿Eliminar carpeta?",
+    message:
+      count === 0
+        ? "Se eliminará la carpeta vacía. No se puede deshacer."
+        : "Se borrarán también las conexiones dentro. No se puede deshacer.",
+    impact,
+    confirmLabel: "Eliminar",
+    danger: true,
+  });
+  if (!ok) return;
+
+  try {
+    await invoke("delete_folder", { id: folder.id });
+    expandedFolderIds.delete(folder.id);
+    if (activeFolderId === folder.id) {
+      activeFolderId = currentFolders.find((f) => f.id !== folder.id)?.id ?? null;
+    }
+    await loadProfiles();
+  } catch (err) {
+    console.error("Error al eliminar carpeta:", err);
+    await alertDialog({
+      title: "Error",
+      message: "Error al eliminar la carpeta: " + err,
+    });
   }
 }
 
@@ -481,73 +1306,331 @@ function renderProfileList() {
   const container = profileListContainer;
   if (!container) return;
 
-  if (currentProfiles.length === 0) {
-    container.innerHTML = `<div class="profile-list-empty">No hay perfiles de conexión.</div>`;
+  if (currentFolders.length === 0) {
+    container.innerHTML = `<div class="profile-list-empty">No hay carpetas. Agrega una carpeta para organizar conexiones.</div>`;
     return;
   }
 
   container.innerHTML = "";
-  currentProfiles.forEach(prof => {
-    const item = document.createElement("div");
-    item.className = "profile-item";
-    if (prof.id === activeProfileId) item.classList.add("active");
 
-    const detailText = prof.tunnel_type !== 'none' 
-      ? `SSH (Túnel: ${prof.tunnel_type})` 
-      : `SSH (${prof.auth_type === 'password' ? 'Contraseña' : 'Llave'})`;
+  for (const folder of currentFolders) {
+    if (folder.id === undefined) continue;
+    const folderId = folder.id;
+    const expanded = expandedFolderIds.has(folderId);
+    const children = currentProfiles.filter((p) => p.folder_id === folderId);
 
-    item.innerHTML = `
-      <div class="profile-item-header">
-        <span class="profile-item-name">${escapeHtml(prof.name)}</span>
-        <div class="profile-item-actions">
-          <button class="btn-icon btn-edit" title="Editar">✏️</button>
-          <button class="btn-icon btn-delete" title="Eliminar">🗑️</button>
-        </div>
-      </div>
-      <div class="profile-item-host">${escapeHtml(prof.username)}@${escapeHtml(prof.host)}:${prof.port}</div>
-      <div class="profile-item-details">${detailText}</div>
-    `;
+    const block = document.createElement("div");
+    block.className = "folder-block";
+    block.dataset.folderId = String(folderId);
 
-    // Click en item para conectar
-    item.addEventListener("click", () => {
-      selectProfile(prof.id || null);
-    });
+    const row = document.createElement("div");
+    row.className = "folder-row";
+    row.title = expanded ? "Clic para colapsar" : "Clic para expandir";
+    if (activeFolderId === folderId) row.classList.add("is-active-context");
 
-    // Editar
-    item.querySelector(".btn-edit")?.addEventListener("click", (e) => {
+    const toggleFolderRow = () => {
+      activeFolderId = folderId;
+      if (expandedFolderIds.has(folderId)) {
+        expandedFolderIds.delete(folderId);
+      } else {
+        expandedFolderIds.add(folderId);
+      }
+      renderProfileList();
+    };
+
+    const chevronBtn = document.createElement("button");
+    chevronBtn.type = "button";
+    chevronBtn.className = "folder-chevron";
+    chevronBtn.title = expanded ? "Colapsar" : "Expandir";
+    chevronBtn.setAttribute("aria-expanded", String(expanded));
+    chevronBtn.appendChild(
+      icon(expanded ? AppIcons.chevronDown : AppIcons.chevronRight, {
+        size: 14,
+        className: "icon--sm",
+      }),
+    );
+    // Click bubbles to .folder-row (whole-row toggle)
+
+    const folderIconEl = icon(AppIcons.folder, { size: 16, className: "folder-icon icon--md" });
+
+    const actions = document.createElement("div");
+    actions.className = "folder-actions";
+
+    const addConnBtn = document.createElement("button");
+    addConnBtn.type = "button";
+    addConnBtn.className = "btn-icon";
+    addConnBtn.title = "Nueva conexión en esta carpeta";
+    addConnBtn.setAttribute("aria-label", "Nueva conexión en esta carpeta");
+    setButtonIcon(addConnBtn, AppIcons.plus, { size: 14, className: "icon--sm" });
+    addConnBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      openProfileModal(prof);
+      activeFolderId = folderId;
+      openProfileModal(undefined, folderId);
     });
 
-    // Eliminar
-    item.querySelector(".btn-delete")?.addEventListener("click", (e) => {
-      if (prof.id !== undefined) deleteProfile(prof.id, e);
+    actions.append(addConnBtn);
+    actions.addEventListener("click", (e) => e.stopPropagation());
+
+    row.append(chevronBtn, folderIconEl);
+    row.addEventListener("click", toggleFolderRow);
+    row.addEventListener("contextmenu", (ev) => {
+      ev.preventDefault();
+      ev.stopPropagation();
+      void (async () => {
+        const action = await showContextMenu(ev.clientX, ev.clientY, [
+          { id: "rename", label: "Renombrar", icon: AppIcons.type },
+          {
+            id: "delete",
+            label: "Eliminar",
+            icon: AppIcons.trash2,
+            danger: true,
+            separatorBefore: true,
+          },
+        ]);
+        if (action === "rename") {
+          renamingFolderId = folderId;
+          renderProfileList();
+        } else if (action === "delete") {
+          void deleteFolder(folder);
+        }
+      })();
     });
 
-    container.appendChild(item);
-  });
+    if (renamingFolderId === folderId) {
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "folder-name-input";
+      input.value = folder.name;
+      input.addEventListener("click", (e) => e.stopPropagation());
+      input.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+          e.preventDefault();
+          void commitFolderRename(folderId, input.value);
+        } else if (e.key === "Escape") {
+          e.preventDefault();
+          renamingFolderId = null;
+          renderProfileList();
+        }
+      });
+      input.addEventListener("blur", () => {
+        if (renamingFolderId === folderId) {
+          void commitFolderRename(folderId, input.value);
+        }
+      });
+      row.append(input, actions);
+      block.appendChild(row);
+      container.appendChild(block);
+      queueMicrotask(() => {
+        input.focus();
+        input.select();
+      });
+    } else {
+      const nameEl = document.createElement("span");
+      nameEl.className = "folder-name";
+      nameEl.textContent = folder.name;
+      row.append(nameEl, actions);
+      block.appendChild(row);
+    }
+
+    if (expanded) {
+      const childrenEl = document.createElement("div");
+      childrenEl.className = "folder-children";
+      if (children.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "profile-list-empty";
+        empty.style.padding = "12px 8px";
+        empty.style.fontSize = "0.8rem";
+        empty.textContent = "Sin conexiones";
+        childrenEl.appendChild(empty);
+      } else {
+        for (const prof of children) {
+          childrenEl.appendChild(buildProfileItem(prof));
+        }
+      }
+      block.appendChild(childrenEl);
+    }
+
+    container.appendChild(block);
+  }
 }
 
-function selectProfile(id: number | null) {
-  activeProfileId = id;
-  const container = profileListContainer;
-  const items = container?.querySelectorAll(".profile-item");
-  items?.forEach((item, index) => {
-    const prof = currentProfiles[index];
-    if (prof.id === id) {
-      item.classList.add("active");
-    } else {
-      item.classList.remove("active");
-    }
+async function commitFolderRename(folderId: number, name: string) {
+  const trimmed = name.trim();
+  renamingFolderId = null;
+  if (!trimmed) {
+    renderProfileList();
+    return;
+  }
+  const current = currentFolders.find((f) => f.id === folderId);
+  if (current && current.name === trimmed) {
+    renderProfileList();
+    return;
+  }
+  try {
+    await invoke("update_folder", { id: folderId, name: trimmed });
+    await loadProfiles();
+  } catch (err) {
+    console.error("Error al renombrar carpeta:", err);
+    await alertDialog({
+      title: "Error",
+      message: "Error al renombrar: " + err,
+    });
+    await loadProfiles();
+  }
+}
+
+async function commitProfileRename(profile: ConnectionProfile, name: string) {
+  const trimmed = name.trim();
+  renamingProfileId = null;
+  if (!trimmed || profile.id === undefined) {
+    renderProfileList();
+    return;
+  }
+  if (profile.name === trimmed) {
+    renderProfileList();
+    return;
+  }
+  try {
+    const updated: ConnectionProfile = { ...profile, name: trimmed };
+    await invoke("update_profile", { profile: updated });
+    await loadProfiles();
+  } catch (err) {
+    console.error("Error al renombrar conexión:", err);
+    await alertDialog({
+      title: "Error",
+      message: "Error al renombrar: " + err,
+    });
+    await loadProfiles();
+  }
+}
+
+function buildProfileItem(prof: ConnectionProfile): HTMLElement {
+  const item = document.createElement("div");
+  item.className = "profile-item";
+  if (prof.id === activeProfileId) item.classList.add("active");
+
+  const userAtHost = `${prof.username}@${prof.host}`;
+  const hostDisplay = `${userAtHost}:${prof.port}`;
+  const isRenaming = prof.id !== undefined && renamingProfileId === prof.id;
+
+  const header = document.createElement("div");
+  header.className = "profile-item-header";
+
+  if (isRenaming) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "profile-name-input";
+    input.value = prof.name;
+    input.addEventListener("click", (e) => e.stopPropagation());
+    input.addEventListener("dblclick", (e) => e.stopPropagation());
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        void commitProfileRename(prof, input.value);
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        renamingProfileId = null;
+        renderProfileList();
+      }
+    });
+    input.addEventListener("blur", () => {
+      if (renamingProfileId === prof.id) {
+        void commitProfileRename(prof, input.value);
+      }
+    });
+    header.appendChild(input);
+    queueMicrotask(() => {
+      input.focus();
+      input.select();
+    });
+  } else {
+    const nameEl = document.createElement("span");
+    nameEl.className = "profile-item-name";
+    nameEl.textContent = prof.name;
+    header.appendChild(nameEl);
+  }
+
+  const hostRow = document.createElement("div");
+  hostRow.className = "profile-item-host-row";
+
+  const hostEl = document.createElement("span");
+  hostEl.className = "profile-item-host";
+  hostEl.textContent = hostDisplay;
+
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.className = "btn-icon btn-copy-endpoint";
+  copyBtn.title = "Copiar user@host";
+  copyBtn.setAttribute("aria-label", "Copiar user@host");
+  setButtonIcon(copyBtn, AppIcons.copy, { size: 14, className: "icon--sm" });
+  copyBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void copyUserAtHost(userAtHost, copyBtn);
   });
 
-  // Disparar conexión SSH
-  if (id !== null) {
-    const selectedProfile = currentProfiles.find(p => p.id === id);
-    if (selectedProfile) {
-      startNewSshConnection(selectedProfile);
-    }
+  hostRow.append(hostEl, copyBtn);
+  item.append(header, hostRow);
+
+  item.addEventListener("click", () => {
+    highlightProfile(prof.id ?? null);
+  });
+
+  item.addEventListener("dblclick", () => {
+    if (isRenaming || prof.id === undefined) return;
+    activeProfileId = prof.id;
+    startNewSshConnection(prof);
+  });
+
+  item.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (prof.id === undefined) return;
+    void (async () => {
+      const action = await showContextMenu(ev.clientX, ev.clientY, [
+        { id: "edit", label: "Editar", icon: AppIcons.pencil },
+        { id: "rename", label: "Renombrar", icon: AppIcons.type },
+        {
+          id: "delete",
+          label: "Eliminar",
+          icon: AppIcons.trash2,
+          danger: true,
+          separatorBefore: true,
+        },
+      ]);
+      if (action === "edit") {
+        openProfileModal(prof);
+      } else if (action === "rename") {
+        renamingProfileId = prof.id!;
+        renderProfileList();
+      } else if (action === "delete") {
+        void deleteProfile(prof.id!);
+      }
+    })();
+  });
+
+  return item;
+}
+
+async function copyUserAtHost(text: string, btn: HTMLButtonElement) {
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.title = "Copiado";
+    setTimeout(() => {
+      btn.title = "Copiar user@host";
+    }, 1200);
+  } catch (err) {
+    console.error("No se pudo copiar al portapapeles:", err);
+    await alertDialog({
+      title: "Error",
+      message: "No se pudo copiar: " + err,
+    });
   }
+}
+
+function highlightProfile(id: number | null) {
+  if (activeProfileId === id) return;
+  activeProfileId = id;
+  renderProfileList();
 }
 
 // --- SSH Connection Execution ---
@@ -569,15 +1652,25 @@ function startNewSshConnection(profile: ConnectionProfile) {
   const tabEl = document.createElement("div");
   tabEl.className = "term-tab";
   tabEl.id = `tab-${terminalId}`;
-  tabEl.innerHTML = `
-    <span class="term-tab-title">${escapeHtml(profile.name)}</span>
-    <button class="term-tab-close" title="Cerrar Terminal">×</button>
-  `;
-  
+
+  const titleSpan = document.createElement("span");
+  titleSpan.className = "term-tab-title";
+  titleSpan.textContent = profile.name;
+
+  const closeBtn = document.createElement("button");
+  closeBtn.type = "button";
+  closeBtn.className = "term-tab-close";
+  closeBtn.title = "Cerrar Terminal";
+  closeBtn.setAttribute("aria-label", "Cerrar Terminal");
+  setButtonIcon(closeBtn, AppIcons.x, { size: 12, className: "icon--sm" });
+
+  tabEl.appendChild(titleSpan);
+  tabEl.appendChild(closeBtn);
+
   tabEl.addEventListener("click", (e) => {
     const target = e.target as HTMLElement;
-    if (target.classList.contains("term-tab-close")) {
-      closeTerminalSession(terminalId);
+    if (target.closest(".term-tab-close")) {
+      void closeTerminalSession(terminalId);
     } else {
       switchActiveTerminal(terminalId);
     }
@@ -592,7 +1685,7 @@ function startNewSshConnection(profile: ConnectionProfile) {
   panelEl.innerHTML = `
     <div class="terminal-panel-header">
       <div class="terminal-status-indicator">
-        <div class="status-dot"></div>
+        <div class="status-dot connecting"></div>
         <span class="terminal-status-text">Conectando...</span>
       </div>
       <div class="terminal-info-text">${escapeHtml(profile.username)}@${escapeHtml(profile.host)}:${profile.port}</div>
@@ -637,10 +1730,38 @@ function startNewSshConnection(profile: ConnectionProfile) {
 
   term.write("\x1b[35;1m[Iniciando sesión SSH en NekoSSH...]\x1b[0m\r\n");
 
-  // Registrar input del usuario en xterm hacia el backend
-  term.onData((data) => {
-    invoke("write_ssh_input", { terminalId, data })
+  // Evidencia: writes de 1 byte (onData por tecla) provocan "transport read" en libssh2
+  // con lector PTY concurrente. Coalescer ~16ms agrupa tecleo en un solo invoke/write.
+  let writeBuffer = { data: "" };
+  let writeTimer: ReturnType<typeof setTimeout> | null = null;
+  const flushWriteBuffer = () => {
+    writeTimer = null;
+    const payload = writeBuffer.data;
+    writeBuffer.data = "";
+    if (!payload) return;
+    invoke("write_ssh_input", { terminalId, data: payload })
       .catch(err => console.error("Error al escribir input SSH:", err));
+  };
+  term.onData((data) => {
+    writeBuffer.data += data;
+    if (writeTimer == null) {
+      writeTimer = setTimeout(flushWriteBuffer, 16);
+    }
+  });
+
+  // Ctrl+R: reconectar solo si la pestaña está desconectada (estilo Terminus/Moba).
+  term.attachCustomKeyEventHandler((ev) => {
+    if (ev.type !== "keydown") return true;
+    if (!(ev.ctrlKey && !ev.altKey && !ev.metaKey && (ev.key === "r" || ev.key === "R"))) {
+      return true;
+    }
+    const at = activeTerminals.get(terminalId);
+    if (!at || at.isConnected || at.isReconnecting) {
+      return true; // dejar pasar al remoto si hay sesión viva
+    }
+    ev.preventDefault();
+    void reconnectTerminalSession(terminalId);
+    return false;
   });
 
   // Registrar resize del emulador hacia el backend
@@ -656,11 +1777,13 @@ function startNewSshConnection(profile: ConnectionProfile) {
   const activeTerm: ActiveTerminal = {
     id: terminalId,
     profileName: profile.name,
+    profile: { ...profile },
     term,
     fitAddon,
     panelEl,
     tabEl,
-    isConnected: false
+    isConnected: false,
+    isReconnecting: false,
   };
 
   activeTerminals.set(terminalId, activeTerm);
@@ -669,7 +1792,27 @@ function startNewSshConnection(profile: ConnectionProfile) {
   switchActiveTerminal(terminalId);
 
   // 4. Iniciar Conexión SSH en backend Rust
-  invoke("start_ssh_session", {
+  void invokeStartSshSession(terminalId, profile).catch((err) => {
+    console.error("Error al iniciar sesión SSH:", err);
+    term.write(`\r\n\x1b[31;1m[ERROR] No se pudo invocar el backend: ${err}\x1b[0m\r\n\x1b[33mCtrl+R para reconectar\x1b[0m\r\n`);
+    const at = activeTerminals.get(terminalId);
+    if (at) {
+      at.isConnected = false;
+      setTerminalConnectionStatus(at, "error");
+    }
+  });
+}
+
+function resolveProfileForReconnect(snapshot: ConnectionProfile): ConnectionProfile {
+  if (snapshot.id !== undefined) {
+    const fresh = currentProfiles.find((p) => p.id === snapshot.id);
+    if (fresh) return fresh;
+  }
+  return snapshot;
+}
+
+async function invokeStartSshSession(terminalId: string, profile: ConnectionProfile) {
+  await invoke("start_ssh_session", {
     terminalId,
     host: profile.host,
     port: profile.port,
@@ -677,11 +1820,41 @@ function startNewSshConnection(profile: ConnectionProfile) {
     authType: profile.auth_type,
     password: profile.password || null,
     keyPath: profile.key_path || null,
-    passphrase: profile.passphrase || null
-  }).catch(err => {
-    console.error("Error al iniciar sesión SSH:", err);
-    term.write(`\r\n\x1b[31;1m[ERROR] No se pudo invocar el backend: ${err}\x1b[0m\r\n`);
+    passphrase: profile.passphrase || null,
+    keepalive: profile.keepalive || 60,
   });
+}
+
+async function reconnectTerminalSession(terminalId: string) {
+  const activeTerm = activeTerminals.get(terminalId);
+  if (!activeTerm || activeTerm.isConnected || activeTerm.isReconnecting) return;
+
+  activeTerm.isReconnecting = true;
+  setTerminalConnectionStatus(activeTerm, "connecting", "Reconectando...");
+  activeTerm.term.write("\r\n\x1b[35;1m[Reconectando sesión SSH...]\x1b[0m\r\n");
+
+  // Cleanup idempotente por si quedó entrada stale en el backend.
+  try {
+    await invoke("close_ssh_session", { terminalId });
+  } catch {
+    // ignore
+  }
+
+  const profile = resolveProfileForReconnect(activeTerm.profile);
+  activeTerm.profile = { ...profile };
+  activeTerm.profileName = profile.name;
+
+  try {
+    await invokeStartSshSession(terminalId, profile);
+  } catch (err) {
+    console.error("Error al reconectar SSH:", err);
+    activeTerm.isReconnecting = false;
+    activeTerm.isConnected = false;
+    setTerminalConnectionStatus(activeTerm, "error");
+    activeTerm.term.write(
+      `\r\n\x1b[31;1m[ERROR] No se pudo reconectar: ${err}\x1b[0m\r\n\x1b[33mCtrl+R para reintentar\x1b[0m\r\n`,
+    );
+  }
 }
 
 function switchActiveTerminal(terminalId: string) {
@@ -702,35 +1875,50 @@ function switchActiveTerminal(terminalId: string) {
       term.panelEl.classList.remove("active");
     }
   });
+
+  // Solo SFTP si la pestaña Archivos está visible. Llamar sftp_list_dir en cada
+  // cambio de terminal compite con el PTY (mismo Session) y puede tumbar el transport.
+  if (panelFiles?.classList.contains("active")) {
+    void refreshExplorerForActiveTerminal();
+  }
 }
 
 async function closeTerminalSession(terminalId: string) {
   const activeTerm = activeTerminals.get(terminalId);
   if (!activeTerm) return;
 
-  // Invocar cierre nativo en backend
+  // Marcar desconectado antes del invoke para que un ssh-closed tardío no pinte banner.
+  activeTerm.isConnected = false;
+
   try {
     await invoke("close_ssh_session", { terminalId });
   } catch (err) {
     console.error("Error al cerrar sesión SSH en backend:", err);
   }
 
-  // Destruir terminal y remover elementos DOM
+  // Limpiar explorador si estaba ligado a esta terminal
+  if (explorerBoundTerminalId === terminalId) {
+    showExplorerEmpty("Conecta un servidor para explorar archivos remotos.");
+    explorerRoot = null;
+    explorerBoundTerminalId = null;
+  }
+
   activeTerm.term.dispose();
   activeTerm.tabEl.remove();
   activeTerm.panelEl.remove();
-
   activeTerminals.delete(terminalId);
 
-  // Seleccionar otra terminal activa si hay alguna
+  if (currentActiveTerminalId === terminalId) {
+    currentActiveTerminalId = null;
+  }
+
   if (activeTerminals.size > 0) {
     const nextKey = activeTerminals.keys().next().value;
     if (nextKey) switchActiveTerminal(nextKey);
   } else {
-    // Volver a la pantalla de bienvenida
     currentActiveTerminalId = null;
     if (btnCloseAllTerminals) btnCloseAllTerminals.style.display = "none";
-    
+
     const welcomeScreen = mainDisplayArea?.querySelector(".welcome-screen");
     if (welcomeScreen) {
       (welcomeScreen as HTMLElement).style.display = "flex";
@@ -738,14 +1926,21 @@ async function closeTerminalSession(terminalId: string) {
   }
 }
 
-function closeAllTerminals() {
+async function closeAllTerminals() {
   if (activeTerminals.size === 0) return;
-  if (!confirm("¿Está seguro de que desea cerrar todas las terminales activas?")) return;
+  const ok = await confirmDialog({
+    title: "¿Cerrar todas las terminales?",
+    message: "Se cerrarán todas las sesiones SSH activas.",
+    confirmLabel: "Cerrar todas",
+    danger: true,
+  });
+  if (!ok) return;
 
   const ids = Array.from(activeTerminals.keys());
-  ids.forEach(id => {
-    closeTerminalSession(id);
-  });
+  // Secuencial: cada close apaga la Session en backend antes de la siguiente.
+  for (const id of ids) {
+    await closeTerminalSession(id);
+  }
 }
 
 // --- Utils ---

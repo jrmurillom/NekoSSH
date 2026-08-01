@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NekoSSH — Propuestas: confirms + menús contextuales</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --bg-dark-base: #0c060d;
+        --bg-dark-card: rgba(20, 10, 22, 0.82);
+        --color-sakura-neon: #ff69b4;
+        --color-sakura-light: #ffb7d5;
+        --color-cyan-electric: #00ffff;
+        --color-text-primary: #f8f8f2;
+        --color-text-muted: #a593ad;
+        --color-error-neon: #ff3131;
+        --glass-blur: blur(16px);
+        --glass-border: 1px solid rgba(255, 105, 180, 0.18);
+        --glass-shadow: 0 12px 40px rgba(0, 0, 0, 0.55);
+        --font-sans: "Outfit", system-ui, sans-serif;
+        --font-mono: "Fira Code", monospace;
+        --radius-sm: 4px;
+        --radius-md: 8px;
+        --radius-lg: 14px;
+      }
+
+      * { box-sizing: border-box; margin: 0; padding: 0; }
+
+      body {
+        font-family: var(--font-sans);
+        background:
+          radial-gradient(1200px 600px at 10% -10%, rgba(255, 105, 180, 0.12), transparent 55%),
+          radial-gradient(900px 500px at 90% 10%, rgba(0, 255, 255, 0.06), transparent 50%),
+          var(--bg-dark-base);
+        color: var(--color-text-primary);
+        min-height: 100vh;
+        padding: 32px 28px 64px;
+      }
+
+      h1 {
+        font-size: 1.6rem;
+        font-weight: 700;
+        letter-spacing: -0.02em;
+        margin-bottom: 6px;
+      }
+
+      .lede {
+        color: var(--color-text-muted);
+        max-width: 62ch;
+        line-height: 1.5;
+        margin-bottom: 28px;
+        font-size: 0.95rem;
+      }
+
+      .lede strong { color: var(--color-sakura-light); font-weight: 600; }
+
+      .section {
+        margin-bottom: 40px;
+      }
+
+      .section h2 {
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--color-cyan-electric);
+        margin-bottom: 14px;
+        font-weight: 600;
+      }
+
+      .grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 18px;
+      }
+
+      .card {
+        background: rgba(255, 255, 255, 0.03);
+        border: 1px solid rgba(255, 105, 180, 0.12);
+        border-radius: var(--radius-lg);
+        padding: 16px;
+        min-height: 280px;
+        position: relative;
+        overflow: hidden;
+      }
+
+      .card-label {
+        font-size: 0.72rem;
+        color: var(--color-text-muted);
+        margin-bottom: 12px;
+        display: flex;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .card-label span.tag {
+        color: var(--color-sakura-light);
+        border: 1px solid rgba(255, 105, 180, 0.35);
+        border-radius: 999px;
+        padding: 1px 8px;
+        font-size: 0.65rem;
+      }
+
+      .stage {
+        position: relative;
+        height: 220px;
+        border-radius: var(--radius-md);
+        background: rgba(0, 0, 0, 0.35);
+        border: 1px dashed rgba(255, 105, 180, 0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* ——— Confirm A: dialog glass centrado ——— */
+      .overlay-a {
+        position: absolute;
+        inset: 0;
+        background: rgba(8, 4, 9, 0.62);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px;
+      }
+
+      .dialog-a {
+        width: min(100%, 320px);
+        background: var(--bg-dark-card);
+        backdrop-filter: var(--glass-blur);
+        border: var(--glass-border);
+        border-radius: var(--radius-lg);
+        box-shadow: var(--glass-shadow);
+        padding: 18px 18px 14px;
+      }
+
+      .dialog-a h3 {
+        font-size: 1.05rem;
+        margin-bottom: 6px;
+      }
+
+      .dialog-a p {
+        font-size: 0.85rem;
+        color: var(--color-text-muted);
+        line-height: 1.45;
+        margin-bottom: 16px;
+      }
+
+      .dialog-a .impact {
+        font-family: var(--font-mono);
+        font-size: 0.72rem;
+        color: var(--color-cyan-electric);
+        margin-bottom: 14px;
+      }
+
+      .actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 8px;
+      }
+
+      .btn {
+        border: none;
+        border-radius: var(--radius-md);
+        padding: 8px 14px;
+        font-family: var(--font-sans);
+        font-size: 0.85rem;
+        font-weight: 600;
+        cursor: pointer;
+      }
+
+      .btn-ghost {
+        background: transparent;
+        color: var(--color-text-muted);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+      }
+
+      .btn-ghost:hover { color: var(--color-text-primary); border-color: rgba(255, 105, 180, 0.35); }
+
+      .btn-danger {
+        background: rgba(255, 49, 49, 0.18);
+        color: #ff8a8a;
+        border: 1px solid rgba(255, 49, 49, 0.45);
+      }
+
+      .btn-danger:hover {
+        background: rgba(255, 49, 49, 0.28);
+        color: #fff;
+      }
+
+      .btn-primary {
+        background: rgba(255, 105, 180, 0.16);
+        color: var(--color-sakura-light);
+        border: 1px solid rgba(255, 105, 180, 0.45);
+      }
+
+      /* ——— Confirm B: barra inferior (toast-confirm) ——— */
+      .dialog-b {
+        position: absolute;
+        left: 12px;
+        right: 12px;
+        bottom: 12px;
+        background: var(--bg-dark-card);
+        backdrop-filter: var(--glass-blur);
+        border: var(--glass-border);
+        border-radius: var(--radius-md);
+        padding: 12px 14px;
+        box-shadow: var(--glass-shadow);
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .dialog-b .row {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+      }
+
+      .dialog-b .mark {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--color-error-neon);
+        margin-top: 5px;
+        flex-shrink: 0;
+      }
+
+      .dialog-b h3 { font-size: 0.92rem; margin-bottom: 2px; }
+      .dialog-b p { font-size: 0.78rem; color: var(--color-text-muted); line-height: 1.4; }
+
+      /* ——— Confirm C: inline en la fila (sin modal) ——— */
+      .fake-tree {
+        width: 100%;
+        padding: 12px;
+        align-self: stretch;
+      }
+
+      .fake-folder {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px 10px;
+        border-radius: var(--radius-md);
+        border: 1px solid rgba(255, 105, 180, 0.2);
+        background: rgba(255, 105, 180, 0.06);
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+
+      .fake-folder .ic { color: var(--color-cyan-electric); font-size: 0.85rem; }
+
+      .inline-confirm {
+        margin-top: 8px;
+        margin-left: 18px;
+        padding: 10px 12px;
+        border-left: 2px solid var(--color-error-neon);
+        background: rgba(255, 49, 49, 0.08);
+        border-radius: 0 var(--radius-md) var(--radius-md) 0;
+      }
+
+      .inline-confirm p {
+        font-size: 0.8rem;
+        color: var(--color-text-muted);
+        margin-bottom: 10px;
+        line-height: 1.4;
+      }
+
+      /* ——— Context menus ——— */
+      .menu-stage {
+        justify-content: flex-start;
+        align-items: flex-start;
+        padding: 28px 24px;
+      }
+
+      .ctx {
+        list-style: none;
+        min-width: 200px;
+        background: var(--bg-dark-card);
+        backdrop-filter: var(--glass-blur);
+        border: var(--glass-border);
+        border-radius: var(--radius-md);
+        box-shadow: var(--glass-shadow);
+        padding: 6px 0;
+      }
+
+      .ctx li {
+        padding: 8px 14px;
+        font-size: 0.85rem;
+        cursor: default;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        color: var(--color-text-primary);
+      }
+
+      .ctx li:hover,
+      .ctx li.is-hover {
+        background: color-mix(in srgb, var(--color-sakura-neon) 12%, transparent);
+        color: var(--color-sakura-neon);
+      }
+
+      .ctx li.danger { color: #ff8a8a; }
+      .ctx li.danger:hover,
+      .ctx li.danger.is-hover {
+        background: rgba(255, 49, 49, 0.14);
+        color: #ffb0b0;
+      }
+
+      .ctx .sep {
+        height: 1px;
+        margin: 5px 10px;
+        background: rgba(255, 105, 180, 0.15);
+        padding: 0;
+        list-style: none;
+      }
+
+      .ctx .kbd {
+        font-family: var(--font-mono);
+        font-size: 0.68rem;
+        color: var(--color-text-muted);
+      }
+
+      .ctx-b {
+        min-width: 220px;
+      }
+
+      .ctx-b .head {
+        padding: 6px 14px 8px;
+        font-size: 0.68rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: var(--color-text-muted);
+        border-bottom: 1px solid rgba(255, 105, 180, 0.1);
+        margin-bottom: 4px;
+      }
+
+      .ctx-c {
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        padding: 4px;
+        min-width: 180px;
+      }
+
+      .ctx-c button {
+        all: unset;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 10px;
+        border-radius: var(--radius-sm);
+        font-size: 0.84rem;
+        cursor: default;
+      }
+
+      .ctx-c button:hover,
+      .ctx-c button.is-hover {
+        /* Same pink as “Nueva conexión” / .btn-primary */
+        background: color-mix(in srgb, var(--color-sakura-neon) 14%, transparent);
+        color: var(--color-sakura-neon);
+      }
+
+      .ctx-c .glyph {
+        width: 16px;
+        text-align: center;
+        opacity: 0.75;
+        font-size: 0.75rem;
+      }
+
+      .ssot {
+        margin-top: 8px;
+        padding: 16px 18px;
+        border: 1px solid rgba(0, 255, 255, 0.18);
+        border-radius: var(--radius-lg);
+        background: rgba(0, 255, 255, 0.04);
+        max-width: 720px;
+      }
+
+      .ssot h2 {
+        color: var(--color-cyan-electric);
+        font-size: 0.78rem;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        margin-bottom: 10px;
+      }
+
+      .ssot ul {
+        margin-left: 1.1rem;
+        color: var(--color-text-muted);
+        font-size: 0.88rem;
+        line-height: 1.55;
+      }
+
+      .ssot code {
+        font-family: var(--font-mono);
+        font-size: 0.78rem;
+        color: var(--color-sakura-light);
+      }
+
+      .pick {
+        margin-top: 20px;
+        color: var(--color-text-muted);
+        font-size: 0.9rem;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Propuestas: confirms + menús contextuales</h1>
+    <p class="lede">
+      Preview aislado (no es CSS de producción). Tokens Cyber-Sakura, <strong>sin glow</strong>.
+      Hoy la app usa <code>window.confirm</code> / <code>alert</code> nativos y un menú SFTP de una sola acción.
+      Objetivo: unificar overlays en SSOT y reemplazar los diálogos del OS.
+    </p>
+
+    <section class="section">
+      <h2>A · Confirms destructivos</h2>
+      <div class="grid">
+        <!-- A1 -->
+        <article class="card">
+          <div class="card-label">
+            A1 — Dialog glass centrado
+            <span class="tag">recomendado</span>
+          </div>
+          <div class="stage">
+            <div class="overlay-a">
+              <div class="dialog-a">
+                <h3>¿Eliminar carpeta?</h3>
+                <p>Se borrarán también las conexiones dentro. No se puede deshacer.</p>
+                <div class="impact">Production · 2 conexiones</div>
+                <div class="actions">
+                  <button class="btn btn-ghost" type="button">Cancelar</button>
+                  <button class="btn btn-danger" type="button">Eliminar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- A2 -->
+        <article class="card">
+          <div class="card-label">
+            A2 — Barra inferior (menos interrupción)
+            <span class="tag">alt</span>
+          </div>
+          <div class="stage">
+            <div class="dialog-b">
+              <div class="row">
+                <span class="mark"></span>
+                <div>
+                  <h3>Cerrar todas las terminales</h3>
+                  <p>Se desconectarán las sesiones SSH activas de esta ventana.</p>
+                </div>
+              </div>
+              <div class="actions">
+                <button class="btn btn-ghost" type="button">Cancelar</button>
+                <button class="btn btn-danger" type="button">Cerrar todo</button>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <!-- A3 -->
+        <article class="card">
+          <div class="card-label">
+            A3 — Inline en el árbol
+            <span class="tag">ligero</span>
+          </div>
+          <div class="stage">
+            <div class="fake-tree">
+              <div class="fake-folder">
+                <span class="ic">▣</span> Staging
+              </div>
+              <div class="inline-confirm">
+                <p>¿Eliminar <strong style="color:#f8f8f2">Staging</strong> y 1 conexión?</p>
+                <div class="actions">
+                  <button class="btn btn-ghost" type="button">No</button>
+                  <button class="btn btn-danger" type="button">Sí, eliminar</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <section class="section">
+      <h2>B · Menús contextuales</h2>
+      <div class="grid">
+        <article class="card">
+          <div class="card-label">
+            B1 — Lista plana (evolución del actual)
+            <span class="tag">SFTP</span>
+          </div>
+          <div class="stage menu-stage">
+            <ul class="ctx">
+              <li class="is-hover">Abrir en Terminal <span class="kbd">↵</span></li>
+              <li>Copiar ruta</li>
+              <li>Renombrar</li>
+              <li class="sep" aria-hidden="true"></li>
+              <li class="danger">Eliminar…</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-label">
+            B2 — Con cabecera de contexto
+            <span class="tag">archivo</span>
+          </div>
+          <div class="stage menu-stage">
+            <ul class="ctx ctx-b">
+              <li class="head" style="display:block;cursor:default">backup_02-10-24.sql</li>
+              <li class="is-hover">Abrir en Terminal</li>
+              <li>Copiar ruta</li>
+              <li>Descargar…</li>
+              <li class="sep" aria-hidden="true"></li>
+              <li class="danger">Eliminar…</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="card">
+          <div class="card-label">
+            B3 — Ítems con glifo (conexiones)
+            <span class="tag">sidebar</span>
+          </div>
+          <div class="stage menu-stage">
+            <div class="ctx ctx-c">
+              <button type="button" class="is-hover"><span class="glyph">⟳</span> Conectar</button>
+              <button type="button"><span class="glyph">✎</span> Editar</button>
+              <button type="button"><span class="glyph">⧉</span> Copiar user@host</button>
+              <button type="button" style="color:#ff8a8a"><span class="glyph">⌫</span> Eliminar…</button>
+            </div>
+          </div>
+        </article>
+      </div>
+    </section>
+
+    <aside class="ssot">
+      <h2>Dónde viviría en SSOT</h2>
+      <ul>
+        <li><code>DESIGN.md</code> — look: glass dialog, botones danger/ghost, menú contextual (padding, hover, separator, danger row). Sin glow.</li>
+        <li><code>ui-layout-contract.md</code> — comportamiento: confirm anclado al flujo (no banner suelto); menú anclado al origen (lista/archivo); Escape cancela; focus trap en dialog.</li>
+        <li>Implementación: un helper JS (<code>confirmDialog</code> / <code>showContextMenu</code>) que mate <code>window.confirm</code> / <code>alert</code> nativos.</li>
+      </ul>
+    </aside>
+
+    <p class="pick">
+      Pregunta útil: ¿preferís <strong>A1</strong> para todo lo destructivo (consistente) o
+      <strong>A3</strong> solo en el árbol y <strong>A1</strong> para “cerrar todo”?
+      En menús, ¿ampliamos primero solo SFTP (B1/B2) o también conexiones (B3)?
+    </p>
+  </body>
+</html>
