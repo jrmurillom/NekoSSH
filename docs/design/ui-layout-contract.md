@@ -61,7 +61,8 @@ Reglas:
 | Fase 2 | Perfiles + **explorador remoto** (árbol SFTP lazy; path editable + Ir + Actualizar) | Terminal + sync cwd vía **OSC 7**; “Abrir en Terminal” |
 | Fase 3 | + menú/doble clic **Editar** en archivos; settings de editor externo | Edición **fuera** del proceso (editor OS); A1 “¿Subir al servidor?”; tras fallo de permisos A1 opcional “Subir con sudo” (sin password UI); sin pestaña Monaco |
 | Fase 3b (futuro) | (igual) | + editor Monaco en pestaña/área (diferido) |
-| Fase 4 | (definir) | Snippets / extensiones sin romper shell |
+| Fase 4a | Botón **Snippets** temático + engrane en `sidebar-footer` (prefs editor/fondo/opacidad en popover) → modal | Modal glass: chips + lista plana + búsqueda + CRUD; copy clipboard; sin tercera columna |
+| Fase 4b (futuro) | (definir Petdex) | Mascotas diferidas; sin romper shell |
 
 No inventar una tercera columna permanente sin actualizar este contrato.
 

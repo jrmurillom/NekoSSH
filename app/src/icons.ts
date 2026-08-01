@@ -19,6 +19,9 @@ import {
   Copy,
   X,
   Plus,
+  ClipboardList,
+  MoreVertical,
+  Settings,
 } from "lucide";
 
 export type IconOptions = {
@@ -71,4 +74,7 @@ export const AppIcons = {
   copy: Copy,
   x: X,
   plus: Plus,
+  clipboardList: ClipboardList,
+  moreVertical: MoreVertical,
+  settings: Settings,
 } as const;

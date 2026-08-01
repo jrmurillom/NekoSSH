@@ -57,26 +57,46 @@
           </div>
         </div>
 
-        <!-- Panel de Configuración Rápida en Sidebar -->
+        <!-- Footer mínimo: Snippets + engrane (prefs en popover) -->
         <div class="sidebar-footer">
-          <div class="config-section">
-            <label class="config-label" for="config-editor-path">Editor externo preferido</label>
-            <div class="config-row">
-              <input
-                id="config-editor-path"
-                type="text"
-                spellcheck="false"
-                placeholder="Ruta del ejecutable (vacío = asociación del SO)"
-              />
-              <button type="button" id="btn-save-editor-pref" class="btn-secondary">Guardar</button>
+          <div
+            id="prefs-popover"
+            class="prefs-popover"
+            role="dialog"
+            aria-label="Preferencias rápidas"
+          >
+            <div class="prefs-title">Preferencias</div>
+            <div class="config-section">
+              <label class="config-label" for="config-editor-path">Editor externo preferido</label>
+              <div class="config-row">
+                <input
+                  id="config-editor-path"
+                  type="text"
+                  spellcheck="false"
+                  placeholder="Ruta del ejecutable (vacío = asociación del SO)"
+                />
+                <button type="button" id="btn-save-editor-pref" class="btn-secondary">Guardar</button>
+              </div>
+              <label class="config-label" for="config-bg-url">Fondo</label>
+              <div class="config-row">
+                <input id="config-bg-url" type="text" spellcheck="false" placeholder="URL o ruta de imagen" />
+                <button type="button" id="btn-apply-bg" class="btn-secondary">Aplicar</button>
+              </div>
+              <label class="config-label" for="config-bg-opacity">Opacidad <span id="opacity-val">0.30</span></label>
+              <input id="config-bg-opacity" type="range" min="0" max="1" step="0.01" value="0.30" />
             </div>
-            <label class="config-label" for="config-bg-url">Fondo</label>
-            <div class="config-row">
-              <input id="config-bg-url" type="text" spellcheck="false" placeholder="URL o ruta de imagen" />
-              <button type="button" id="btn-apply-bg" class="btn-secondary">Aplicar</button>
-            </div>
-            <label class="config-label" for="config-bg-opacity">Opacidad <span id="opacity-val">0.30</span></label>
-            <input id="config-bg-opacity" type="range" min="0" max="1" step="0.01" value="0.30" />
+          </div>
+          <div class="footer-actions">
+            <button type="button" id="btn-open-snippets" class="snippets-footer-btn" title="Snippets" aria-label="Snippets"></button>
+            <button
+              type="button"
+              id="btn-footer-gear"
+              class="gear-btn"
+              aria-label="Preferencias"
+              title="Preferencias"
+              aria-expanded="false"
+              aria-controls="prefs-popover"
+            ></button>
           </div>
         </div>
 
@@ -189,6 +209,55 @@
             <button type="submit" id="btn-save-profile" class="btn-primary">Guardar</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <div id="snippets-modal" class="modal" aria-hidden="true">
+      <div class="modal-content snippets-modal-content">
+        <div class="snippets-modal-header">
+          <h2>Snippets</h2>
+          <button type="button" id="btn-close-snippets" class="btn-icon" title="Cerrar" aria-label="Cerrar"></button>
+        </div>
+        <div class="snippets-toolbar">
+          <input id="snippets-search" class="snippets-field" type="search" placeholder="Buscar…" spellcheck="false" />
+          <button type="button" id="btn-snippet-new" class="btn-primary">+ Snippet</button>
+        </div>
+        <div id="snippets-chips" class="snippets-chips" role="toolbar" aria-label="Categorías"></div>
+        <div id="snippets-list" class="snippets-list"></div>
+        <div id="snippet-category-panel" class="snippet-form-panel">
+          <h3>Nueva categoría</h3>
+          <form id="snippet-category-form">
+            <div class="form-group">
+              <label for="snippet-category-name">Nombre</label>
+              <input id="snippet-category-name" class="snippets-field" type="text" required placeholder="Ej. Nginx" />
+            </div>
+            <div class="modal-actions">
+              <button type="button" id="btn-snippet-category-cancel" class="btn-secondary">Cancelar</button>
+              <button type="submit" class="btn-primary">Guardar</button>
+            </div>
+          </form>
+        </div>
+        <div id="snippet-form-panel" class="snippet-form-panel">
+          <h3 id="snippet-form-heading">Nuevo snippet</h3>
+          <form id="snippet-form">
+            <div class="form-group">
+              <label for="snippet-form-category">Categoría</label>
+              <select id="snippet-form-category" class="snippets-select" required></select>
+            </div>
+            <div class="form-group">
+              <label for="snippet-form-title">Título</label>
+              <input id="snippet-form-title" class="snippets-field" type="text" required />
+            </div>
+            <div class="form-group">
+              <label for="snippet-form-body">Contenido</label>
+              <textarea id="snippet-form-body" class="snippets-field" rows="4" required></textarea>
+            </div>
+            <div class="modal-actions">
+              <button type="button" id="btn-snippet-form-cancel" class="btn-secondary">Cancelar</button>
+              <button type="submit" class="btn-primary">Guardar</button>
+            </div>
+          </form>
+        </div>
       </div>
     </div>
   </body>

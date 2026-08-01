@@ -556,11 +556,132 @@ body {
   justify-content: center;
 }
 
-/* --- Panel de Configuración de Fondo --- */
+/* --- Sidebar footer: Snippets + engrane (prefs en popover) --- */
 .sidebar-footer {
-  padding: 16px;
-  border-top: 1px solid rgba(255, 105, 180, 0.1);
-  background: rgba(12, 6, 13, 0.4);
+  position: relative;
+  padding: 12px;
+  border-top: 1px solid rgba(255, 105, 180, 0.12);
+  background: rgba(12, 6, 13, 0.55);
+  backdrop-filter: var(--glass-blur);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar-footer .footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.sidebar-footer .snippets-footer-btn {
+  flex: 1;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0;
+  width: auto;
+  padding: 10px 12px;
+  border-radius: var(--border-radius-md);
+  border: 1px solid rgba(255, 105, 180, 0.28);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 105, 180, 0.12),
+    rgba(0, 0, 0, 0.35)
+  );
+  color: var(--color-sakura-light);
+  font-family: var(--font-sans);
+  font-size: 0.92rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  transition: border-color var(--transition-fast), background var(--transition-fast),
+    color var(--transition-fast);
+}
+
+.sidebar-footer .snippets-footer-btn:hover,
+.sidebar-footer .snippets-footer-btn:focus-visible {
+  border-color: var(--color-sakura-neon);
+  color: var(--color-sakura-neon);
+  background: linear-gradient(
+    135deg,
+    rgba(255, 105, 180, 0.2),
+    rgba(0, 0, 0, 0.4)
+  );
+  outline: none;
+}
+
+.sidebar-footer .gear-btn {
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--border-radius-md);
+  border: 1px solid rgba(255, 105, 180, 0.22);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--color-text-muted);
+  cursor: pointer;
+  transition: border-color var(--transition-fast), color var(--transition-fast),
+    background var(--transition-fast);
+}
+
+.sidebar-footer .gear-btn:hover,
+.sidebar-footer .gear-btn:focus-visible,
+.sidebar-footer .gear-btn[aria-expanded="true"] {
+  color: var(--color-sakura-neon);
+  border-color: rgba(255, 105, 180, 0.55);
+  background: rgba(255, 105, 180, 0.1);
+  outline: none;
+}
+
+.sidebar-footer .prefs-popover {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(100% + 8px);
+  padding: 14px;
+  border-radius: var(--border-radius-md);
+  border: var(--glass-border);
+  background: var(--bg-dark-card);
+  backdrop-filter: var(--glass-blur);
+  box-shadow: var(--glass-shadow);
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  z-index: 20;
+}
+
+.sidebar-footer .prefs-popover.is-open {
+  display: flex;
+}
+
+.sidebar-footer .prefs-popover::after {
+  content: "";
+  position: absolute;
+  bottom: -6px;
+  right: 18px;
+  width: 10px;
+  height: 10px;
+  background: rgba(20, 10, 22, 0.95);
+  border-right: 1px solid rgba(255, 105, 180, 0.18);
+  border-bottom: 1px solid rgba(255, 105, 180, 0.18);
+  transform: rotate(45deg);
+}
+
+.sidebar-footer .prefs-title {
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-sakura-light);
+  font-weight: 700;
+}
+
+.sidebar-footer .prefs-popover .btn-secondary {
+  width: auto;
+  flex-shrink: 0;
 }
 
 .config-section {
@@ -1359,4 +1480,239 @@ input[type="range"]::-webkit-slider-thumb {
   padding: 2px 6px;
   outline: none;
   cursor: text;
+}
+
+/* --- Snippets modal (Fase 4a) — scoped; do not alter global form chrome --- */
+.snippets-modal-content {
+  width: min(640px, 94vw);
+  max-height: min(80vh, 720px);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.snippets-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.snippets-modal-header h2 {
+  margin: 0;
+}
+
+#snippets-modal .snippets-toolbar {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+}
+
+/* Search: crece; no width:100% (rompe la fila con el botón) */
+#snippets-modal .snippets-toolbar #snippets-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 105, 180, 0.35);
+  border-radius: var(--border-radius-md);
+  color: var(--color-text-primary);
+  padding: 9px 12px;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  outline: none;
+}
+
+#snippets-modal .snippets-toolbar #snippets-search:focus {
+  border-color: var(--color-sakura-neon);
+}
+
+#snippets-modal .snippets-toolbar #snippets-search::placeholder {
+  color: var(--color-text-muted);
+}
+
+/* Override .btn-primary { width:100% } sin modificar la regla global */
+#snippets-modal .snippets-toolbar #btn-snippet-new {
+  flex: 0 0 auto;
+  width: auto;
+  max-width: max-content;
+  white-space: nowrap;
+}
+
+#snippets-modal .modal-actions .btn-primary,
+#snippets-modal .modal-actions .btn-secondary {
+  width: auto;
+  min-width: 100px;
+}
+
+/* Campos del form in-modal (no toolbar) */
+#snippets-modal .snippet-form-panel .snippets-field {
+  width: 100%;
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 105, 180, 0.35);
+  border-radius: var(--border-radius-md);
+  color: var(--color-text-primary);
+  padding: 9px 12px;
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  outline: none;
+}
+
+#snippets-modal .snippet-form-panel .snippets-field:focus {
+  border-color: var(--color-sakura-neon);
+}
+
+#snippets-modal .snippet-form-panel .snippets-field::placeholder {
+  color: var(--color-text-muted);
+}
+
+.snippets-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.snippets-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.snippets-chip.is-active {
+  border-color: var(--color-sakura-neon);
+  color: var(--color-sakura-neon);
+}
+
+.snippets-chip-add {
+  padding: 4px 8px;
+}
+
+.snippets-chip-x {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0.75;
+}
+
+.snippets-chip-x:hover {
+  opacity: 1;
+  color: var(--color-sakura-neon);
+}
+
+.snippets-list {
+  flex: 1;
+  min-height: 160px;
+  max-height: 42vh;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid rgba(255, 105, 180, 0.12);
+  border-radius: var(--border-radius-md);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.snippets-empty {
+  padding: 16px 12px;
+  color: var(--color-text-muted);
+  font-size: 0.85rem;
+}
+
+.snippets-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 12px;
+  border-bottom: 1px solid rgba(255, 105, 180, 0.1);
+}
+
+.snippets-row:last-child {
+  border-bottom: none;
+}
+
+.snippets-row:hover {
+  background: rgba(255, 105, 180, 0.06);
+}
+
+.snippets-row-text {
+  flex: 1;
+  min-width: 0;
+}
+
+.snippets-row-title {
+  font-weight: 600;
+  color: var(--color-text-primary);
+  margin-bottom: 4px;
+}
+
+.snippets-row-cmd {
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  color: var(--color-cyan-electric);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.snippets-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.snippet-form-panel {
+  display: none;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  padding-top: 10px;
+}
+
+.snippet-form-panel.is-open {
+  display: block;
+}
+
+.snippet-form-panel h3 {
+  margin: 0 0 8px;
+  font-size: 0.95rem;
+}
+
+/* Select categoría: paridad con .snippets-field; no tocar `select` global */
+#snippets-modal .snippets-select {
+  -webkit-appearance: none;
+  appearance: none;
+  color-scheme: dark;
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0.4);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23ff69b4' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 10px center;
+  border: 1px solid rgba(255, 105, 180, 0.35);
+  border-radius: var(--border-radius-md);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  padding: 9px 32px 9px 12px;
+  outline: none;
+  cursor: pointer;
+  transition: border-color var(--transition-fast);
+}
+
+#snippets-modal .snippets-select:focus,
+#snippets-modal .snippets-select:focus-visible {
+  border-color: var(--color-sakura-neon);
+}
+
+#snippets-modal .snippets-select option {
+  background-color: #140a16;
+  color: var(--color-text-primary);
 }

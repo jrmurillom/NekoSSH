@@ -6,6 +6,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import { AppIcons, icon, setButtonIcon } from "./icons";
 import { alertDialog, confirmDialog, showContextMenu } from "./overlays";
+import { initSnippetsUi } from "./snippets-ui";
 
 // --- Interfaces ---
 interface ConnectionFolder {
@@ -210,6 +211,38 @@ function initSettings() {
   void loadPreferredEditorIntoUi();
   btnSaveEditorPref?.addEventListener("click", () => {
     void savePreferredEditorFromUi();
+  });
+
+  initFooterPrefsPopover();
+}
+
+/** Engrane del footer: abre/cierra popover de prefs (misma capacidad que el strip previo). */
+function initFooterPrefsPopover() {
+  const gear = document.getElementById("btn-footer-gear");
+  const pop = document.getElementById("prefs-popover");
+  if (!gear || !pop) return;
+
+  setButtonIcon(gear, AppIcons.settings, { size: 18, className: "icon--md" });
+
+  gear.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = !pop.classList.contains("is-open");
+    pop.classList.toggle("is-open", open);
+    gear.setAttribute("aria-expanded", open ? "true" : "false");
+  });
+
+  document.addEventListener("click", (e) => {
+    if (!pop.classList.contains("is-open")) return;
+    const target = e.target as Node;
+    if (pop.contains(target) || gear.contains(target)) return;
+    pop.classList.remove("is-open");
+    gear.setAttribute("aria-expanded", "false");
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !pop.classList.contains("is-open")) return;
+    pop.classList.remove("is-open");
+    gear.setAttribute("aria-expanded", "false");
   });
 }
 
@@ -847,6 +880,7 @@ function initExternalEditListeners() {
 // --- DOM Loaded Listener ---
 window.addEventListener("DOMContentLoaded", () => {
   initSettings();
+  initSnippetsUi();
   initTabs();
   initExternalEditListeners();
   

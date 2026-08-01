@@ -12,6 +12,7 @@ use ssh2::{MethodType, Session};
 mod path_util;
 mod osc7; // tests unitarios del parser; sync de producto fuera de alcance
 pub mod preferences;
+pub mod snippets;
 pub mod edit_util;
 pub mod edit_session;
 pub mod fake_sftp;
@@ -92,6 +93,7 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         .map_err(|e| format!("Error al inicializar base de datos: {}", e))?;
     ensure_connection_folders_schema(conn)?;
     ensure_app_preferences_schema(conn)?;
+    snippets::ensure_snippets_schema(conn)?;
     Ok(())
 }
 
@@ -1076,6 +1078,71 @@ async fn ssh_cd(
     Ok(path)
 }
 
+#[tauri::command]
+fn list_snippet_categories(app: AppHandle) -> Result<Vec<snippets::SnippetCategory>, String> {
+    let conn = get_db_conn(&app)?;
+    snippets::ensure_snippet_seed(&conn)?;
+    snippets::list_categories(&conn)
+}
+
+#[tauri::command]
+fn create_snippet_category(app: AppHandle, name: String) -> Result<snippets::SnippetCategory, String> {
+    let conn = get_db_conn(&app)?;
+    snippets::create_category(&conn, &name)
+}
+
+#[tauri::command]
+fn delete_snippet_category(app: AppHandle, id: i64) -> Result<(), String> {
+    let conn = get_db_conn(&app)?;
+    snippets::delete_category(&conn, id)
+}
+
+#[tauri::command]
+fn list_snippets_cmd(
+    app: AppHandle,
+    category_id: Option<i64>,
+    query: Option<String>,
+) -> Result<Vec<snippets::Snippet>, String> {
+    let conn = get_db_conn(&app)?;
+    snippets::ensure_snippet_seed(&conn)?;
+    snippets::list_snippets(&conn, category_id, query.as_deref())
+}
+
+#[tauri::command]
+fn create_snippet_cmd(
+    app: AppHandle,
+    category_id: i64,
+    title: String,
+    body: String,
+) -> Result<snippets::Snippet, String> {
+    let conn = get_db_conn(&app)?;
+    snippets::create_snippet(&conn, category_id, &title, &body)
+}
+
+#[tauri::command]
+fn update_snippet_cmd(
+    app: AppHandle,
+    id: i64,
+    category_id: i64,
+    title: String,
+    body: String,
+) -> Result<snippets::Snippet, String> {
+    let conn = get_db_conn(&app)?;
+    snippets::update_snippet(&conn, id, category_id, &title, &body)
+}
+
+#[tauri::command]
+fn delete_snippet_cmd(app: AppHandle, id: i64) -> Result<(), String> {
+    let conn = get_db_conn(&app)?;
+    snippets::delete_snippet(&conn, id)
+}
+
+#[tauri::command]
+fn ensure_snippet_seed_cmd(app: AppHandle) -> Result<bool, String> {
+    let conn = get_db_conn(&app)?;
+    snippets::ensure_snippet_seed(&conn)
+}
+
 // --- App Entry Point ---
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -1096,6 +1163,12 @@ pub fn run() {
             version: 3,
             description: "app_preferences",
             sql: include_str!("../migrations/003_app_preferences.sql"),
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "snippets",
+            sql: include_str!("../migrations/004_snippets.sql"),
             kind: MigrationKind::Up,
         },
     ];
@@ -1142,7 +1215,15 @@ pub fn run() {
             confirm_edit_upload,
             edit_session_upload_with_sudo,
             dismiss_edit_change,
-            stop_external_edit
+            stop_external_edit,
+            list_snippet_categories,
+            create_snippet_category,
+            delete_snippet_category,
+            list_snippets_cmd,
+            create_snippet_cmd,
+            update_snippet_cmd,
+            delete_snippet_cmd,
+            ensure_snippet_seed_cmd
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");

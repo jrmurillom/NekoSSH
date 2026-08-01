@@ -65,8 +65,13 @@ Este documento define el alcance, stack tecnológico y las fases de desarrollo p
 
 ---
 
-### 📋 Fase 4: Por Definir (Gestor de Snippets y Mascotas)
-* **Alcance General**:
-  - Implementación del diccionario de snippets local categorizado y su modal de inserción rápida.
-  - Sincronización e integración de las mascotas interactivas basadas en el ecosistema Petdex local. 
-  - *(Detalles técnicos exactos de funcionamiento y hooks a definir en futuras revisiones).*
+### 📋 Fase 4a: Gestor de Snippets
+* Botón **Snippets** en el footer del sidebar → modal glass.
+* Lista plana + chips de categoría (un nivel) + búsqueda.
+* CRUD in-modal; **Copiar** al portapapeles (sin insertar en PTY); eliminar con confirm A1.
+* Persistencia SQLite + seed demo (Apache, Tomcat, Permisos).
+* Sin atajo de teclado en este slice.
+
+### 📋 Fase 4b (futuro / diferido): Mascotas Petdex
+* Sincronización e integración de mascotas interactivas del ecosistema Petdex local.
+* Fuera del alcance de Fase 4a.
