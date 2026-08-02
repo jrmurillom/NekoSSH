@@ -78,6 +78,7 @@ Definir en el stylesheet raíz de la app y heredar globalmente. No hardcodear he
 ### Terminal
 
 - Fondo de viewport de terminal **opaco** (`#080409` o equivalente) — no glass sobre el stream de texto.
+- **Resplandor / Glow del Contenedor Unificado (Excepción de Diseño):** El panel de la terminal (`.terminal-panel`) es la única superficie del producto autorizada a poseer un resplandor luminoso de neón (`box-shadow: 0 0 25px rgba(255, 105, 180, 0.12)` y `border: 1px solid rgba(255, 105, 180, 0.25)`). Esto delimita el bloque de consola unificado de forma premium, manteniendo el glow estrictamente limitado al color sakura del tema.
 - Cursor: blink obligatorio; estilo configurable (`block` | `underline` | `bar`); color de acento plano (p. ej. sakura), **sin** `box-shadow` glow.
 
 ### Editor (cuando aplique)
