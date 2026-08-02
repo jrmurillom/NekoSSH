@@ -37,11 +37,15 @@ El sistema SHALL permitir editar el nombre de una carpeta de forma inline en el 
 - **THEN** el sistema descarta el cambio y restaura el nombre anterior
 
 ### Requirement: Presentación densa del árbol de carpetas
-En el sidebar Servidores, las filas de carpeta SHALL presentarse con **densidad de lista plana**: sin chrome de caja/tarjeta (sin borde visible que forme rectángulo en idle, hover o contexto activo). El hover/activo MAY usar solo tint de fondo plano. El bloque de carpeta MUST indicar jerarquía padre/hijo mediante indentación de los hijos y una guía vertical (p. ej. borde izquierdo sutil). La fila de carpeta SHALL conservar el chrome funcional (chevron + icono carpeta + nombre + `+`) sin basurero inline. Las conexiones hijas MUST usar cajita con chrome de tarjeta; las carpetas NO MUST verse como tarjetas ni cajas contenedoras.
+En el sidebar Servidores, las filas de carpeta SHALL presentarse con **densidad de lista plana**: sin chrome de caja/tarjeta (sin borde visible que forme rectángulo en idle, hover o contexto activo). Las carpetas del árbol MUST iniciar en estado completamente colapsado por defecto al abrir la aplicación. Las filas de carpeta NO MUST mostrar retención de tinte rosa o cambio de fondo permanente tras recibir un clic de selección/activación de contexto (`.is-active-context` background transparente). El hover sutil de la fila de carpeta solo permanecerá activo mientras el cursor sobrevuele el elemento.
 
-#### Scenario: Fila de carpeta sin caja
-- **WHEN** el usuario ve una carpeta en el árbol (idle, hover o contexto activo)
-- **THEN** la fila se lee como ítem de lista plano sin borde/caja contenedora; no se percibe como tarjeta
+#### Scenario: Fila de carpeta sin caja ni fondo persistente al clic
+- **WHEN** el usuario hace clic en una fila de carpeta para expandir o colapsar sus elementos
+- **THEN** la carpeta alterna su estado visual pero conserva su fondo transparente sin dejar un tinte activo permanente
+
+#### Scenario: Árbol colapsado al iniciar la aplicación
+- **WHEN** la aplicación NekoSSH se abre por primera vez o se recarga
+- **THEN** todas las carpetas en el panel de Servidores inician colapsadas por defecto
 
 #### Scenario: Guía e indentación de hijos
 - **WHEN** una carpeta está expandida y tiene conexiones (o el estado vacío «Sin conexiones»)

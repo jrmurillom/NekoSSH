@@ -188,8 +188,12 @@
           </div>
 
           <div id="auth-key-group" class="form-group" style="display: none;">
-            <label for="prof-key-path">Ruta de Llave Privada (.pem, .key, etc.)</label>
-            <input type="text" id="prof-key-path" placeholder="C:\Users\...\id_rsa" />
+            <label for="prof-key-path">Ruta de Llave Privada (.pem, .key, .ppk, etc.)</label>
+            <div class="input-browse-row">
+              <input type="text" id="prof-key-path" placeholder="C:\Users\...\id_rsa" />
+              <button type="button" id="btn-browse-key" class="btn-secondary">Examinar...</button>
+              <input type="file" id="file-input-key" style="display: none;" accept=".pem,.key,.ppk,id_rsa,*" />
+            </div>
             <label for="prof-passphrase" style="margin-top: 8px;">Frase de Paso (Passphrase)</label>
             <input type="password" id="prof-passphrase" placeholder="Opcional" />
           </div>

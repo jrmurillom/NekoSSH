@@ -881,6 +881,9 @@ function initExternalEditListeners() {
 
 // --- DOM Loaded Listener ---
 window.addEventListener("DOMContentLoaded", () => {
+  // Inhabilitar menú contextual nativo del navegador en todo el documento
+  document.addEventListener("contextmenu", (e) => e.preventDefault());
+
   initSettings();
   initSnippetsUi();
   initTabs();
@@ -953,6 +956,24 @@ window.addEventListener("DOMContentLoaded", () => {
   tunTypeSelect?.addEventListener("change", (e) => {
     const target = e.target as HTMLSelectElement;
     toggleTunnelFields(target.value);
+  });
+
+  // Selector nativo de archivo de llave privada
+  const btnBrowseKey = document.getElementById("btn-browse-key") as HTMLButtonElement | null;
+  const fileInputKey = document.getElementById("file-input-key") as HTMLInputElement | null;
+
+  btnBrowseKey?.addEventListener("click", () => {
+    fileInputKey?.click();
+  });
+
+  fileInputKey?.addEventListener("change", () => {
+    if (fileInputKey.files && fileInputKey.files.length > 0) {
+      const selectedFile = fileInputKey.files[0] as File & { path?: string };
+      const fullPath = selectedFile.path || selectedFile.name;
+      if (profKeyPathInput) {
+        profKeyPathInput.value = fullPath;
+      }
+    }
   });
 
   // Submit del formulario
@@ -1182,9 +1203,6 @@ async function loadProfiles() {
     currentFolders = folders;
     currentProfiles = profiles;
     if (!foldersExpandSeeded) {
-      for (const f of currentFolders) {
-        if (f.id !== undefined) expandedFolderIds.add(f.id);
-      }
       foldersExpandSeeded = true;
     }
     // Keep expanded set in sync for newly created folders
@@ -1940,9 +1958,20 @@ function switchActiveTerminal(terminalId: string) {
   }
 }
 
-async function closeTerminalSession(terminalId: string) {
+async function closeTerminalSession(terminalId: string, skipConfirm = false) {
   const activeTerm = activeTerminals.get(terminalId);
   if (!activeTerm) return;
+
+  if (activeTerm.isConnected && !skipConfirm) {
+    const profileName = activeTerm.profile.name || `${activeTerm.profile.username}@${activeTerm.profile.host}`;
+    const ok = await confirmDialog({
+      title: "¿Cerrar sesión SSH activa?",
+      message: `La conexión a "${profileName}" está activa. ¿Deseas desconectarte y cerrar la pestaña?`,
+      confirmLabel: "Desconectar",
+      danger: true,
+    });
+    if (!ok) return;
+  }
 
   // Marcar desconectado antes del invoke para que un ssh-closed tardío no pinte banner.
   activeTerm.isConnected = false;
@@ -1985,18 +2014,22 @@ async function closeTerminalSession(terminalId: string) {
 
 async function closeAllTerminals() {
   if (activeTerminals.size === 0) return;
-  const ok = await confirmDialog({
-    title: "¿Cerrar todas las terminales?",
-    message: "Se cerrarán todas las sesiones SSH activas.",
-    confirmLabel: "Cerrar todas",
-    danger: true,
-  });
-  if (!ok) return;
+
+  const connectedCount = Array.from(activeTerminals.values()).filter((t) => t.isConnected).length;
+  if (connectedCount > 0) {
+    const ok = await confirmDialog({
+      title: "¿Cerrar todas las terminales?",
+      message: `Hay ${connectedCount} sesión${connectedCount === 1 ? "" : "es"} SSH activa${connectedCount === 1 ? "" : "s"}. ¿Seguro que deseas cerrar todas las pestañas?`,
+      confirmLabel: "Cerrar todas",
+      danger: true,
+    });
+    if (!ok) return;
+  }
 
   const ids = Array.from(activeTerminals.keys());
   // Secuencial: cada close apaga la Session en backend antes de la siguiente.
   for (const id of ids) {
-    await closeTerminalSession(id);
+    await closeTerminalSession(id, true);
   }
 }
 

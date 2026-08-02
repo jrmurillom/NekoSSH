@@ -386,7 +386,7 @@ body {
 }
 
 .connection-tree .folder-row.is-active-context {
-  background: rgba(255, 105, 180, 0.1);
+  background: transparent;
 }
 
 .connection-tree .folder-chevron {
@@ -767,12 +767,14 @@ body {
   letter-spacing: 1px;
 }
 
-.config-row {
+.config-row,
+.input-browse-row {
   display: flex;
   gap: 8px;
 }
 
-.config-row input {
+.config-row input,
+.input-browse-row input {
   flex: 1;
 }
 

@@ -29,19 +29,23 @@ El sistema SHALL establecer una conexión SSH interactiva en el backend de Rust 
 - **THEN** la conexión permanece abierta y los caracteres llegan al shell remoto
 
 ### Requirement: Cierre de conexiones con pestaña y aplicación
-El sistema SHALL liberar de forma ordenada la Session SSH asociada a un `terminal_id` cuando el usuario cierra esa pestaña de terminal, y SHALL liberar todas las Sessions SSH activas cuando se cierra la ventana o se sale de la aplicación. El cierre SHALL ser idempotente (cerrar dos veces no falla de forma ruidosa) y no SHALL dejar entradas huérfanas en el estado de conexiones del backend.
+El sistema SHALL liberar de forma ordenada la Session SSH asociada a un `terminal_id` cuando el usuario cierra esa pestaña de terminal, y SHALL liberar todas las Sessions SSH activas cuando se cierra la ventana o se sale de la aplicación. Al intentar cerrar una pestaña con sesión viva (`isConnected === true`), el sistema MUST solicitar confirmación mediante un diálogo de confirmación antes de proceder a la desconexión. Al ejecutar "Cerrar Todo", si existen conexiones vivas, el sistema MUST solicitar confirmación global una sola vez antes de cerrar todas las sesiones.
 
-#### Scenario: Cerrar pestaña de terminal
-- **WHEN** el usuario cierra la pestaña de una terminal conectada
-- **THEN** el backend elimina esa sesión del estado, cierra el canal PTY y desconecta la Session SSH de ese `terminal_id`
+#### Scenario: Confirmación al cerrar pestaña individual con sesión viva
+- **WHEN** el usuario hace clic en el botón de cerrar (`x`) en una pestaña de terminal que tiene una conexión SSH activa (`isConnected === true`)
+- **THEN** el sistema despliega el diálogo de confirmación glass. Si el usuario confirma, la sesión se libera y la pestaña se remueve; si cancela, la terminal permanece abierta
+
+#### Scenario: Cerrar pestaña desconectada sin confirmación
+- **WHEN** el usuario hace clic en el botón de cerrar (`x`) en una pestaña que ya está desconectada (`isConnected === false`)
+- **THEN** la pestaña se cierra de inmediato sin solicitar confirmación
 
 #### Scenario: Cerrar la aplicación con sesiones activas
 - **WHEN** el usuario cierra la ventana de NekoSSH con una o más terminales conectadas
 - **THEN** el sistema cierra todas las Sessions SSH activas antes de terminar el proceso
 
-#### Scenario: Cerrar todas las terminales
-- **WHEN** el usuario elige cerrar todas las terminales
-- **THEN** cada `terminal_id` activo recibe el mismo cleanup que al cerrar una pestaña individual
+#### Scenario: Confirmación al cerrar todas las terminales
+- **WHEN** el usuario activa la acción "Cerrar Todo" teniendo una o más terminales activas conectadas
+- **THEN** el sistema presenta un único diálogo de confirmación global antes de cerrar todas las pestañas
 
 ### Requirement: Aviso de sesión SSH desconectada
 Cuando la Session SSH asociada a una pestaña de terminal termina de forma no solicitada por el usuario (EOF, error de transporte, cierre remoto), el sistema SHALL mostrar en el viewport de esa terminal un mensaje claro de desconexión e indicar que puede reconectar con **Ctrl+R**. El indicador de estado de la pestaña (dot + texto) SHALL pasar a un estado de desconectado (o error, si el cierre fue por fallo de conexión).
