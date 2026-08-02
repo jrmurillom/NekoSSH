@@ -5,7 +5,7 @@
 2. **Autorización Explícita**: No se modificará ni se agregará absolutamente nada al código, estilos o configuración sin un plan previo aprobado y una tarea (`task`) correspondiente.
 3. **Adherencia Estricta a Tareas**: Solo se puede trabajar y modificar el código que esté listado y aprobado en el archivo de tareas (`task.md`).
 4. **Cero Alteración a Voluntad**: No se modificará código a voluntad o de forma unilateral. Toda edición debe estar vinculada a una tarea explícita.
-5. **Delegación a OpenSpec**: Cuando se invoque o use un comando del flujo de trabajo de OpenSpec (opsx), se debe delegar todo el proceso al flujo dictado por su respectiva skill de planificación e implementación. Queda prohibido interferir con su flujo automático, pedir confirmaciones de planes intermedios adicionales o forzar comandos manuales que interrumpan dicho proceso.
+5. **Uso Mandatorio de OpenSpec (opsx)**: Es estrictamente obligatorio y mandatorio que toda propuesta, planificación, ejecución y archivo de cualquier cambio técnico en el codebase se realice única y exclusivamente a través de los comandos y flujo de trabajo de la CLI de OpenSpec. Queda terminantemente prohibido realizar modificaciones manuales directas, crear tareas o alterar el código fuera de los comandos de la CLI de OpenSpec (`opsx-*`). El agente debe delegar todo el proceso a los flujos automáticos dictados por las respectivas skills de OpenSpec sin interferir, omitir pasos o requerir confirmaciones externas al framework.
 
 ## Comunicación y Calidad Técnica
 6. **Sinceridad y Verdad**: Priorizar la verdad técnica antes que la amabilidad. Si una propuesta o idea compromete el proyecto, se informará con total franqueza.

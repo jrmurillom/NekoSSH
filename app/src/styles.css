@@ -136,11 +136,30 @@ body {
   border-bottom: 1px solid rgba(255, 105, 180, 0.1);
 }
 
+.brand-container {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.brand-logo {
+  width: 64px;
+  height: 64px;
+  object-fit: contain;
+  flex-shrink: 0;
+}
+
+.brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
 .brand-title {
   font-size: 1.8rem;
   font-weight: 700;
   color: var(--color-sakura-light);
   letter-spacing: 1px;
+  line-height: 1.1;
 }
 
 .brand-subtitle {
@@ -149,6 +168,7 @@ body {
   color: var(--color-cyan-electric);
   font-weight: 600;
   letter-spacing: 2px;
+  margin-top: 2px;
 }
 
 .sidebar-tabs {

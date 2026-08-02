@@ -39,6 +39,7 @@ Reglas:
 - Una composición primaria: sidebar + workspace — no dashboard de widgets en el primer viewport de trabajo.
 - El sidebar no compite visualmente con el stream de la terminal: densidad de lista, no tarjetas decorativas.
 - El workspace es el ancla funcional; paneles secundarios no deben tapar la zona de entrada de la terminal sin acción explícita del usuario.
+- **Encabezado del Sidebar (Marca y Logo):** El encabezado del sidebar (`.sidebar-header`) se compone de un contenedor horizontal `.brand-container` que alinea el logo de la aplicación (`.brand-logo` de `32x32px` físicos reescalados) a la izquierda y el bloque vertical de texto `.brand-text` (que agrupa a `.brand-title` y `.brand-subtitle`) a la derecha, manteniendo una separación de `14px` mediante Flexbox.
 
 ---
 

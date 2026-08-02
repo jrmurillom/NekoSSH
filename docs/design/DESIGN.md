@@ -73,6 +73,7 @@ Definir en el stylesheet raíz de la app y heredar globalmente. No hardcodear he
 - Paneles con `backdrop-filter: var(--glass-blur)` y `background: var(--bg-dark-card)`.
 - `--glass-shadow` solo como sombra de profundidad (sin tinte neón).
 - Fondo de app configurable (imagen o color) con opacidad de imagen en rango `0.1`–`0.4`.
+- **Logo del sidebar:** Renderizado plano y nítido a `32x32px` sin efectos de resplandor o desenfoque. Queda estrictamente prohibido aplicar filtros como `drop-shadow` de neón rosa/cian que generen un brillo luminoso, en alineación con el principio de acentos planos "sin glow".
 
 ### Terminal
 
