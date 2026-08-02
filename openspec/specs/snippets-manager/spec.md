@@ -43,6 +43,17 @@ El producto SHALL exponer un control en `sidebar-footer` (franja inferior del si
 - **WHEN** el usuario pulsa combinaciones de teclado habituales sin haber definido un shortcut de snippets
 - **THEN** el gestor no se abre por teclado como parte de este alcance
 
+### Requirement: Botón Snippets con fill primario del tema
+El control de apertura de Snippets en `sidebar-footer` (`.snippets-footer-btn`) SHALL usar el **fill primario** del tema Cyber-Sakura — el mismo gradiente/fondo y contraste de texto que el botón primario de producto (`.btn-primary`: `linear-gradient` con `--color-sakura-neon` y texto blanco), no un estilo ghost/outline con fondo oscuro. Este requisito es solo de look del control existente; el comportamiento de apertura del modal MUST permanecer igual. El engrane de preferencias NO MUST adoptar ese fill primario.
+
+#### Scenario: Fill alineado al primario
+- **WHEN** el usuario ve el botón Snippets en el footer del sidebar
+- **THEN** el botón se percibe con relleno rosa/sakura sólido (gradiente primario del tema) y texto/icono en contraste claro, no como outline sobre fondo oscuro
+
+#### Scenario: Apertura intacta
+- **WHEN** el usuario activa el botón Snippets
+- **THEN** se abre el modal del gestor como antes
+
 ### Requirement: Modal glass con lista plana, chips y búsqueda
 El gestor SHALL presentarse en un modal con chrome glass alineado al modal de perfil (overlay + panel), no como dialog de confirmación A1. La UI MUST incluir: chips de categoría (incluida opción “Todas”), lista plana de snippets (sin árbol expandible) y un campo de búsqueda que filtre por título y/o cuerpo. Las categorías MUST ser de un solo nivel (sin anidación).
 

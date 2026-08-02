@@ -1,29 +1,22 @@
-# Verificación unit/build y persistencia — correccion-arbol-conexiones
+# Step N+1 — Unit tests + estado de datos
 
+**Change:** `correccion-arbol-conexiones`  
 **Fecha:** 2026-08-01  
-**Rama:** `feature/correccion-arbol-conexiones`  
-**Change:** `correccion-arbol-conexiones`
+**Surface:** desktop-ui (chrome sidebar; sin IPC nuevo)
 
-## Suite ejecutada
+## Unit tests
 
-- `npm run build` desde `app/` → **OK** (`tsc && vite build`, exit 0).
-- Tests unitarios TS/Rust del árbol: **N/A** — no hay suite de tests que aserte clases/markup del sidebar (grep sin matches en `*.test` / `*.spec`).
-- Tests nuevos: **N/A** — solo presentación/CSS; sin lógica de negocio nueva (design § TDD).
+| Check | Resultado |
+|-------|-----------|
+| Suite `npm test` | N/A — no hay script `test` en `app/package.json` |
+| Vitest default | N/A — sin archivos `*.test.ts` del área tocada (árbol/DOM ids) |
+| Cobertura DOM `#btn-new-profile` / header Connections | N/A — change solo de presentación; sin lógica nueva de dominio |
+| `npm run build` (`tsc && vite build`) | PASS — build OK; `dist/index.html` incluye `.connections-zone-header` + label Connections; CSS con `.folder-row { border: none }` y `.profile-item` con borde/radius |
 
-## Persistencia / SQLite
+## Persistencia / DB
 
-- **N/A** — este change no muta SQLite, migraciones, commands Rust ni IPC.
-- Sin cambios en schema ni en comandos de carpetas/perfiles.
-
-## Chequeos de alcance
-
-| Chequeo | Resultado |
-|---------|-----------|
-| Selectores árbol bajo `.connection-tree` | OK |
-| Selectores `.profile-item` / `.folder-row` sin scope | 0 (no globales) |
-| Bloque CSS `#snippets-modal` / `.sidebar-footer` intacto | OK (no editado) |
-| Handlers expand/collapse, `+`, copy, dblclick, menú | OK (presentes en `main.ts`) |
+N/A — este change no muta SQLite ni commands IPC.
 
 ## Conclusión
 
-Build frontend verde. Sin regresiones de tests porque no hay tests del área. Persistencia no aplica.
+Gate N+1 satisfecho con build de producción + N/A documentado para tests/DB del área.

@@ -1180,6 +1180,7 @@ pub fn run() {
         .manage(edit_sessions)
         .manage(edit_watchers)
         .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations("sqlite:nekossh.db", migrations)

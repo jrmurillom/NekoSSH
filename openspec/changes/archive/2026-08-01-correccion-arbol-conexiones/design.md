@@ -1,84 +1,89 @@
 ## Context
 
-Tras `manager-profiles`, el árbol del sidebar (`.connection-tree`) usa filas de carpeta con padding generoso y `.profile-item` con fondo/borde permanentes — se lee como tarjetas, no como lista. El DOM jerárquico (carpeta → hijos) es correcto; el commit de snippets no causó el problema. El contrato (`ui-layout-contract.md`) ya pide densidad de lista. Existe preview estático aprobado como SSOT visual: `docs/design/preview-connection-tree-dense.html` (usuario puede seguir ajustándolo; el apply debe igualar ese preview al cerrar UI).
+Hoy el panel Servidores usa `.panel-actions--split` con CTA `#btn-new-profile` (“Nueva conexión”) + `#btn-new-folder`. Las specs (`connection-folders`, `connection-profiles`) ya piden carpeta en densidad de lista sin chrome de tarjeta, pero `.folder-row` aún aplica borde/radius y los hace visibles en hover/activo — se lee como caja. El footer (Snippets + engrane) no entra en este change.
 
-Stack: CSS/markup Vanilla en `app/`; sin cambios de modelo ni IPC.
+Referencia visual externa: solo la **composición** de un header de zona con label + iconos de crear conexión/carpeta. No se copia look, tipografía ni densidad de esa app.
 
 ## Goals / Non-Goals
 
 **Goals:**
 
-- Filas densas para carpetas y conexiones alineadas al preview (altura, gap, hover, tipografía).
-- Jerarquía legible: indent de hijos + `border-left` guía + bloques por carpeta.
-- Conservar 100% del comportamiento actual (CRUD UI, expand/collapse, vacío, copy, doble clic, menús, rename).
-- CSS preferentemente bajo `.connection-tree` (y descendientes) para no romper modal snippets ni chrome global.
-- Actualizar lenguaje del layout contract («tarjeta» → fila densa) donde describa el árbol.
+- Header de zona encima del árbol: label **Connections** + icon-button crear conexión + icon-button crear carpeta.
+- Misma lógica de negocio que hoy (`createNewFolder`, flujo de nueva conexión / modal); solo cambia el control y el lugar.
+- Fila de carpeta visualmente plana (sin caja); cajita solo en `.profile-item`.
+- Actualizar contrato de layout para el patrón del header de zona.
 
 **Non-Goals:**
 
-- Footer, engrane, snippets, modal de snippets.
-- Cambios de SQLite, migraciones, commands Rust, IPC.
-- Rediseño del explorador SFTP (`files-tree`).
-- Nuevas features de árbol (multi-select, drag-and-drop, subcarpetas).
+- Copiar estética de la captura de referencia (más allá del patrón header + iconos).
+- Mover FolderPlus al footer o meter acciones de árbol en `sidebar-footer`.
+- CTA “Nueva conexión” full-width como botón primario dominante.
+- Cambios IPC/SQLite, menús contextuales, `+` por carpeta, o pestaña Archivos.
 
 ## Decisions
 
-1. **SSOT visual = preview denso**
-   - **Decisión:** Gate de aceptación UI = coincidencia visual con `docs/design/preview-connection-tree-dense.html` (panel «Después»), no con el mock «Antes».
-   - **Alternativa:** reinterpretar DESIGN.md sin preview → rechazada; el usuario pidió preview-first y lo trata como referencia.
-   - **Nota:** si el preview se tweakea antes del apply, re-leer el archivo y alinear; no inventar otra densidad.
+1. **Header de zona en `#panel-servers`, no en el shell global**
+   - **Decisión:** Reemplazar `.panel-actions--split` por un bloque (p. ej. `.connections-zone-header`) solo visible en el panel Servidores.
+   - **Motivo:** Crear conexión/carpeta son acciones del árbol; no deben aparecer en Archivos.
+   - **Alternativa descartada:** Franja encima del footer — mezcla roles con Snippets/prefs.
 
-2. **CSS scoped, clases existentes**
-   - **Decisión:** Ajustar reglas existentes (`.connection-tree`, `.folder-row`, `.folder-children`, `.profile-item`, etc.) anidando o cualificando bajo `.connection-tree` cuando el selector sea ambiguo. Evitar renombrar masivo de clases salvo necesidad del preview.
-   - **Alternativa:** nuevas clases `.conn-row` / `.tree-dense` en runtime → solo si el markup actual no puede expresar el preview sin chocarse con estilos legacy; preferir reutilizar.
-   - **HARD:** no tocar selectores de snippets/modal ni estilos globales de `.btn-icon` salvo overrides scoped.
+2. **Label “Connections” + dos icon-buttons**
+   - **Decisión:** Label a la izquierda; a la derecha icono crear conexión (p. ej. Plus / ServerPlus) e icono crear carpeta (FolderPlus), ambos `btn-icon-action` o equivalente Lucide outline.
+   - **Motivo:** Pedido explícito del explore: composición tipo Connections; sin CTA rosa de texto largo.
+   - **Alternativa descartada:** Mantener CTA “Nueva conexión” full width + carpeta aparte.
 
-3. **Presentación vs interacción**
-   - **Decisión:** Solo polish visual/markup. Interacciones (doble clic conectar, menú, `+` con stopPropagation, expand en click de fila, copy `user@host`) permanecen.
-   - **En reposo:** borde/fondo transparentes o casi nulos; hover/selected con tint sakura suave (como preview).
-   - **Conexión:** min-height ~36px, tipografía nombre ~0.86rem, endpoint mono ~0.68rem cyan.
-   - **Carpeta:** min-height ~28px, gap árbol ~1px entre filas.
+3. **Wire: mismos handlers, nuevos ids si hace falta**
+   - **Decisión:** Reutilizar listeners actuales (`btn-new-profile` / `btn-new-folder` o renombrar ids en HTML + `main.ts` de forma mínima). Nueva conexión desde el header usa el mismo flujo que el botón actual (carpeta destino = contexto activo / reglas existentes). El `+` en cada `.folder-row` se conserva.
+   - **Motivo:** Cero cambio de dominio; solo chrome.
 
-4. **Docs permanentes en el mismo change**
-   - **Decisión:** En tasks de documentación, actualizar `ui-layout-contract.md` § árbol/tarjeta de conexión a «fila densa»; tocar `DESIGN.md` solo si hay patrón listado lateral que contradiga.
-   - El preview HTML puede quedar como referencia de diseño (no es SSOT permanente post-archive, pero sí gate de este change).
+4. **Carpeta sin caja (CSS)**
+   - **Decisión:** `.folder-row` sin `border` de tarjeta (ni transparente que se pinte en hover/activo como caja). Hover/activo = tint de fondo plano opcional, sin `border-color` que dibuje rectángulo. Conservar chevron + icono + nombre + `+`.
+   - **Motivo:** Alinear implementación con el requisito ya escrito; la percepción de “caja” viene del borde.
+   - **Alternativa descartada:** Quitar también el tint de hover — empeora affordance de click en toda la fila.
 
-5. **TDD / pruebas**
-   - **Decisión:** Sin lógica de negocio nueva → no tests unitarios Rust nuevos. Si hay tests frontend de selectores/clases, ajustarlos. Verificación principal = desktop-ui + comparación con preview + build frontend.
+5. **Hijos = única cajita**
+   - **Decisión:** No tocar el modelo de `.profile-item` como tarjeta; solo verificar contraste visual carpeta plana vs hijo con caja.
+   - **Motivo:** Spec de cajita ya es SSOT.
+
+6. **Docs**
+   - **Decisión:** Actualizar `ui-layout-contract.md` § árbol (header de zona + iconos; carpeta sin caja). `DESIGN.md` solo si el header introduce un patrón de componente reutilizable no documentado.
 
 ## Risks / Trade-offs
 
-| Riesgo | Mitigación |
-|--------|------------|
-| Selectores `.profile-item` / `.folder-row` afectan otra UI | Cualificar bajo `.connection-tree`; grep de usos antes de cambiar |
-| Regresión visual en empty state / rename inline | Checklist UI incluye empty «Sin conexiones», rename carpeta/conexión, selected |
-| Preview diverge durante el apply | Re-leer preview al implementar; gate explícito en tasks |
-| Over-refactor de markup | Diff mínimo; CSS first |
+- **[Riesgo] Label en inglés “Connections” vs regla UI en español latino** → Mitigación: pedido explícito del explore; si en apply se prefiere `Conexiones`, es un cambio de copy de una línea sin tocar estructura.
+- **[Riesgo] Nueva conexión desde header sin carpeta de contexto clara** → Mitigación: reutilizar la regla actual del CTA (carpeta activa / default); no inventar flujo nuevo.
+- **[Riesgo] Regresión de densidad / click en fila** → Mitigación: checklist desktop-ui (expand/collapse, `+` con stopPropagation, crear desde header).
+- **[Trade-off] Menos énfasis sakura en “crear conexión”** → Aceptado: iconos en header priorizan jerarquía del árbol sobre CTA marketing.
 
 ## Migration Plan
 
-1. Feature branch `feature/correccion-arbol-conexiones` (ya creada en propose).
-2. Apply: CSS/markup → verificar preview → docs → reports mandatorios.
-3. Rollback: revertir commit(s) de estilos; sin migración de datos.
+- Cambio solo frontend chrome; sin migración de datos.
+- Rollback: restaurar `panel-actions--split` + estilos previos de `.folder-row`.
 
 ## Open Questions
 
-- Ninguna bloqueante. Tweaks menores del preview siguen permitidos antes/durante apply; el alcance permanece «igualar el preview denso», no reabrir footer/snippets.
+- ~~Copy final del label: Connections vs Conexiones~~ → **Resuelto en Corrección de Ruta (Fix):** label UI = **Conexiones**.
 
-### Corrección de Ruta (Fix) — Restaurar cajitas + edit + verificación exhaustiva
+### Corrección de Ruta (Fix)
 
-**Motivo:** El apply aplanó `.profile-item` (over-scope respecto a lo que el usuario acepta): se quitaron las «cajitas» (fondo, borde, radius, padding) de los items de conexión. El usuario reporta que, al quitar esas cajitas, se rompió **Editar** (menú contextual → modal → guardar). Además, no se aceptan falsos positivos: un `npm run build` verde **no** basta para marcar UI/edit como done.
-
-**Estado del working tree:** Puede haber restauración CSS parcial no autorizada en `app/src/styles.css`. Antes de editar: **reconciliar con los estilos de tarjeta (cajitas) de `main`**; verificar el estado actual del archivo (diff vs `main` / HEAD) y solo aplicar lo que falte para paridad de cajitas bajo `.connection-tree .profile-item`, sin reintroducir aplanado ni mezclar con Petdex/snippets.
+**Problema:** El apply dejó el label visible del header de zona como **Connections** (inglés). Eso viola la SSOT de idioma: UI visible al usuario MUST estar en **español latino** (`docs/base-standards.md`). La captura de referencia solo aportaba la *composición* (label de zona + iconos), no el copy en inglés.
 
 **Estrategia:**
+1. Copy visible del header: **Conexiones** (no “Connections”).
+2. Identificadores de código (clases CSS `.connections-zone-header`, ids) permanecen en inglés — eso sí es correcto por la regla bilingüe.
+3. Actualizar delta specs, contrato de layout y `DESIGN.md` para que el label documentado sea **Conexiones**.
+4. Re-verificar desktop-ui con el copy corregido.
 
-1. **Restaurar CSS cajitas** bajo `.connection-tree .profile-item` a paridad con `main` (fondo, borde, radius, padding, gap de hijos). El indent + línea guía del árbol pueden quedarse **si no aplanan** los items (no quitar chrome de tarjeta).
-2. **Diagnosticar y reparar Editar** (context menu → `openProfileModal` → guardar) si está roto por CSS/markup de este change; evidenciar la causa en un report (repro + root cause), no asumir.
-3. **Verificación exhaustiva** del «punto» conexiones/árbol (no solo build): matriz obligatoria de escenarios con pass/fail y evidencia (qué se clicó, esperado vs actual). Prohibido inventar tests verdes o marcar done sin report.
-4. **Prohibido** marcar tasks de UI/edit como `[x]` solo con `npm run build`. Build + tests unitarios existentes del área (si existen) se ejecutan y se pega output real en el report; si no hay tests UI, decirlo con honestidad y exigir matriz manual con evidencia.
+**Zombie:** El string `Connections` en `app/index.html` (y docs/specs que lo repiten) queda invalidado; las tareas §5 lo corrigen.
 
-**HARD:**
-- Una cosa por task; no mezclar Petdex ni snippets en el fix de cajitas/edit (solo smoke de no-regresión snippets/footer).
-- CSS scoped bajo `.connection-tree` (y descendientes necesarios).
-- Tasks de verificación no se cierran sin report en `reports/` con evidencia.
+### Corrección de Ruta (Fix) — color primario en Snippets
+
+**Problema / pedido:** Captura de **referencia** (no copiar layout ni copy). Tomar solo el **color de relleno primario del tema** usado por el CTA histórico “Nueva conexión” (`.btn-primary` → `linear-gradient(135deg, var(--color-sakura-neon), #d82b7d)`, texto blanco) y aplicarlo al botón **Snippets** del `sidebar-footer`. Hoy Snippets usa fondo oscuro semitransparente + borde sakura (ghost/outline), no el fill primario sólido.
+
+**Estrategia:**
+1. Estilos de `.sidebar-footer .snippets-footer-btn`: mismo fill/gradiente y color de texto que `.btn-primary` (tokens del tema). Hover puede reutilizar brightness del primario.
+2. **No** restaurar el CTA “Nueva conexión” en el árbol; **no** copiar la captura (solo el color).
+3. Engrane (gear) sin cambio de rol/estilo primario.
+4. Actualizar look en `DESIGN.md` / contrato si documentan el botón Snippets; delta `snippets-manager`.
+
+**Zombie:** Estilos “ghost sakura” de `.snippets-footer-btn` quedan sustituidos por fill primario; las tareas §6 lo implementan.

@@ -7,6 +7,8 @@ import "@xterm/xterm/css/xterm.css";
 import { AppIcons, icon, setButtonIcon } from "./icons";
 import { alertDialog, confirmDialog, showContextMenu } from "./overlays";
 import { initSnippetsUi } from "./snippets-ui";
+import { stripTrailingPasteNoise } from "./strip-trailing-paste";
+import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 
 // --- Interfaces ---
 interface ConnectionFolder {
@@ -1769,11 +1771,39 @@ function startNewSshConnection(profile: ConnectionProfile) {
     invoke("write_ssh_input", { terminalId, data: payload })
       .catch(err => console.error("Error al escribir input SSH:", err));
   };
-  term.onData((data) => {
+  const enqueuePtyInput = (data: string) => {
+    if (!data) return;
     writeBuffer.data += data;
     if (writeTimer == null) {
       writeTimer = setTimeout(flushWriteBuffer, 16);
     }
+  };
+
+  term.onData((data) => {
+    enqueuePtyInput(data);
+  });
+
+  // Moba-style: seleccionar → copiar; clic derecho → pegar (sin Enter final).
+  // Clipboard nativo Tauri (sin prompt de permiso del WebView).
+  term.onSelectionChange(() => {
+    const selected = term.getSelection();
+    if (!selected) return;
+    void writeText(selected).catch((err) => {
+      console.error("Error al copiar selección de terminal:", err);
+    });
+  });
+
+  canvasContainer.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    void (async () => {
+      try {
+        const raw = await readText();
+        const sanitized = stripTrailingPasteNoise(raw ?? "");
+        enqueuePtyInput(sanitized);
+      } catch (err) {
+        console.error("Error al pegar en terminal:", err);
+      }
+    })();
   });
 
   // Ctrl+R: reconectar solo si la pestaña está desconectada (estilo Terminus/Moba).

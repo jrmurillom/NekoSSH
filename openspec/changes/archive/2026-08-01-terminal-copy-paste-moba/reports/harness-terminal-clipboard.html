@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Harness — terminal copy/paste Moba</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/css/xterm.min.css" />
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        background: #0c060d;
+        color: #f8f8f2;
+        padding: 16px;
+      }
+      #term {
+        height: 240px;
+        border: 1px solid rgba(255, 105, 180, 0.3);
+      }
+      #pty-log {
+        width: 100%;
+        min-height: 80px;
+        margin-top: 12px;
+        background: #140a16;
+        color: #00ffff;
+        font-family: monospace;
+      }
+      .hint {
+        color: #a593ad;
+        font-size: 0.85rem;
+        margin: 8px 0 16px;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>Harness clipboard terminal</h1>
+    <p class="hint">
+      Seleccionar = copiar. Clic derecho = pegar (strip trailing). Log = input al “PTY”.
+    </p>
+    <div id="term"></div>
+    <label for="pty-log">PTY input log</label>
+    <textarea id="pty-log" readonly></textarea>
+    <script type="module">
+      import { Terminal } from "https://cdn.jsdelivr.net/npm/@xterm/xterm@5.5.0/+esm";
+
+      function stripTrailingPasteNoise(text) {
+        return text.replace(/\s+$/u, "");
+      }
+
+      const logEl = document.getElementById("pty-log");
+      const host = document.getElementById("term");
+      const term = new Terminal({
+        cursorBlink: true,
+        theme: { background: "#080409", foreground: "#f8f8f2", cursor: "#ff69b4" },
+      });
+      term.open(host);
+      term.write("demo line: hello-world-select-me\r\n$ ");
+
+      const enqueue = (data) => {
+        if (!data) return;
+        logEl.value += JSON.stringify(data) + "\n";
+        term.write(data.replace(/\r?\n/g, "\r\n"));
+      };
+
+      term.onSelectionChange(() => {
+        const selected = term.getSelection();
+        if (!selected) return;
+        void navigator.clipboard.writeText(selected);
+      });
+
+      host.addEventListener("contextmenu", (ev) => {
+        ev.preventDefault();
+        void (async () => {
+          const raw = await navigator.clipboard.readText();
+          enqueue(stripTrailingPasteNoise(raw));
+        })();
+      });
+
+      window.__harness = { term, stripTrailingPasteNoise, getLog: () => logEl.value };
+    </script>
+  </body>
+</html>
