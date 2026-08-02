@@ -920,12 +920,7 @@ window.addEventListener("DOMContentLoaded", () => {
   profileFolderIdInput = document.getElementById("profile-folder-id") as HTMLInputElement;
 
   if (btnNewProfile) {
-    const label = document.createElement("span");
-    label.textContent = "Nueva conexión";
-    btnNewProfile.replaceChildren(
-      icon(AppIcons.plus, { size: 16, className: "icon--md" }),
-      label,
-    );
+    setButtonIcon(btnNewProfile, AppIcons.plus, { size: 18, className: "icon--md" });
   }
 
   if (btnNewFolder) {

@@ -30,9 +30,24 @@
         <div class="sidebar-content">
           <!-- Panel de Perfiles de Conexión -->
           <div id="panel-servers" class="sidebar-panel active">
-            <div class="panel-actions panel-actions--split">
-              <button id="btn-new-profile" class="btn-primary btn-primary-with-icon" type="button" title="Nueva conexión">Nueva conexión</button>
-              <button id="btn-new-folder" class="btn-icon-action" type="button" title="Agregar carpeta" aria-label="Agregar carpeta"></button>
+            <div class="connections-zone-header">
+              <span class="connections-zone-label">Conexiones</span>
+              <div class="connections-zone-actions">
+                <button
+                  id="btn-new-profile"
+                  class="btn-icon-action"
+                  type="button"
+                  title="Nueva conexión"
+                  aria-label="Nueva conexión"
+                ></button>
+                <button
+                  id="btn-new-folder"
+                  class="btn-icon-action"
+                  type="button"
+                  title="Agregar carpeta"
+                  aria-label="Agregar carpeta"
+                ></button>
+              </div>
             </div>
             <div id="profile-list" class="profile-list connection-tree">
               <!-- Cargado dinámicamente -->

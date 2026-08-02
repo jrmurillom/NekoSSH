@@ -97,7 +97,8 @@ Definir en el stylesheet raíz de la app y heredar globalmente. No hardcodear he
 - Tamaño vía CSS `--icon-size` / clase `.icon`. Implementación: `app/src/icons.ts`.
 - Controles solo-icono deben tener `title` y/o `aria-label`.
 - Rename inline de carpeta/conexión: input en la fila del árbol (no modal obligatorio); se inicia desde el menú contextual; Enter = guardar, Escape = cancelar. No usar doble clic para renombrar.
-- Cajita de conexión (árbol sidebar): fondo/borde/radius de tarjeta en `.connection-tree .profile-item`; endpoint en `--color-cyan-electric`; icono Copy Lucide; sin badge `SSH (Contraseña|Llave)`. Carpetas: filas compactas sin chrome de tarjeta.
+- Cajita de conexión (árbol sidebar): fondo/borde/radius de tarjeta en `.connection-tree .profile-item`; endpoint en `--color-cyan-electric`; icono Copy Lucide; sin badge `SSH (Contraseña|Llave)`. Carpetas: filas planas sin borde/caja (solo tint en hover/activo). Header de zona **Conexiones** (`.connections-zone-header`): label en español latino + icon-buttons Lucide para crear conexión/carpeta — patrón de layout del panel Servidores, no un componente glass nuevo.
+- Botón **Snippets** en `sidebar-footer` (`.snippets-footer-btn`): fill primario del tema — mismo `linear-gradient(135deg, var(--color-sakura-neon), #d82b7d)` y texto blanco que `.btn-primary`; no ghost/outline. El engrane permanece como icon-button secundario.
 
 ### Confirmaciones (dialog)
 
