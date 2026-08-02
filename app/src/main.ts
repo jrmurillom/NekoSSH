@@ -1,5 +1,5 @@
 // --- NekoSSH Frontend Controller (Cyber-Sakura Estética) ---
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -9,6 +9,7 @@ import { alertDialog, confirmDialog, showContextMenu } from "./overlays";
 import { initSnippetsUi } from "./snippets-ui";
 import { stripTrailingPasteNoise } from "./strip-trailing-paste";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
+import { clampAndFormatOpacity, applyBackgroundStyle } from "./bg-settings-helper";
 
 // --- Interfaces ---
 interface ConnectionFolder {
@@ -184,17 +185,74 @@ function initSettings() {
   configEditorPathInput = document.getElementById("config-editor-path") as HTMLInputElement;
   btnSaveEditorPref = document.getElementById("btn-save-editor-pref") as HTMLButtonElement;
 
+  const btnBrowseEditor = document.getElementById("btn-browse-editor") as HTMLButtonElement | null;
+  const fileInputEditor = document.getElementById("file-input-editor") as HTMLInputElement | null;
+  const btnBrowseBg = document.getElementById("btn-browse-bg") as HTMLButtonElement | null;
+  const fileInputBg = document.getElementById("file-input-bg") as HTMLInputElement | null;
+  const btnClearBg = document.getElementById("btn-clear-bg") as HTMLButtonElement | null;
+
+  // Iconografía normalizada de botones de preferencias
+  if (btnBrowseEditor) setButtonIcon(btnBrowseEditor, AppIcons.folder, { size: 14, className: "icon--sm" });
+  if (btnSaveEditorPref) setButtonIcon(btnSaveEditorPref, AppIcons.check, { size: 14, className: "icon--sm" });
+  if (btnBrowseBg) setButtonIcon(btnBrowseBg, AppIcons.folderPlus, { size: 14, className: "icon--sm" });
+  if (btnApplyBg) setButtonIcon(btnApplyBg, AppIcons.check, { size: 14, className: "icon--sm" });
+  if (btnClearBg) setButtonIcon(btnClearBg, AppIcons.trash2, { size: 14, className: "icon--sm" });
+
   // Cargar de localStorage
   const savedBgUrl = localStorage.getItem("nekossh-bg-url") || "";
-  const savedOpacity = localStorage.getItem("nekossh-bg-opacity") || "0.30";
+  const savedOpacity = parseFloat(localStorage.getItem("nekossh-bg-opacity") || "0.30");
+  const { numeric: validOpacity, formatted: formattedOpacity } = clampAndFormatOpacity(savedOpacity);
 
   if (configBgUrlInput) configBgUrlInput.value = savedBgUrl;
-  if (configBgOpacityInput) configBgOpacityInput.value = savedOpacity;
-  if (opacityValLabel) opacityValLabel.textContent = parseFloat(savedOpacity).toFixed(2);
+  if (configBgOpacityInput) configBgOpacityInput.value = validOpacity.toString();
+  if (opacityValLabel) opacityValLabel.textContent = formattedOpacity;
 
-  applyBackgroundSettings(savedBgUrl, parseFloat(savedOpacity));
+  applyBackgroundSettings(savedBgUrl, validOpacity);
 
-  // Event Listeners para Fondo
+  // --- Exploración y acciones de Editor Preferido ---
+  btnBrowseEditor?.addEventListener("click", () => {
+    fileInputEditor?.click();
+  });
+
+  fileInputEditor?.addEventListener("change", () => {
+    if (fileInputEditor.files && fileInputEditor.files.length > 0) {
+      const selectedFile = fileInputEditor.files[0] as File & { path?: string };
+      const fullPath = selectedFile.path || selectedFile.name;
+      if (configEditorPathInput) configEditorPathInput.value = fullPath;
+    }
+  });
+
+  btnSaveEditorPref?.addEventListener("click", () => {
+    void savePreferredEditorFromUi();
+  });
+
+  // --- Exploración y acciones de Fondo de Pantalla ---
+  btnBrowseBg?.addEventListener("click", () => {
+    fileInputBg?.click();
+  });
+
+  fileInputBg?.addEventListener("change", () => {
+    if (fileInputBg.files && fileInputBg.files.length > 0) {
+      const selectedFile = fileInputBg.files[0] as File & { path?: string };
+      const fullPath = selectedFile.path || selectedFile.name;
+      if (configBgUrlInput) configBgUrlInput.value = fullPath;
+      const opacity = parseFloat(configBgOpacityInput?.value || "0.30");
+
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const dataUrl = ev.target?.result as string;
+        const urlToUse = dataUrl || fullPath;
+        localStorage.setItem("nekossh-bg-url", urlToUse);
+        applyBackgroundSettings(urlToUse, opacity);
+      };
+      reader.onerror = () => {
+        localStorage.setItem("nekossh-bg-url", fullPath);
+        applyBackgroundSettings(fullPath, opacity);
+      };
+      reader.readAsDataURL(selectedFile);
+    }
+  });
+
   btnApplyBg?.addEventListener("click", () => {
     const url = configBgUrlInput?.value.trim() || "";
     const opacity = parseFloat(configBgOpacityInput?.value || "0.30");
@@ -202,19 +260,22 @@ function initSettings() {
     applyBackgroundSettings(url, opacity);
   });
 
+  btnClearBg?.addEventListener("click", () => {
+    if (configBgUrlInput) configBgUrlInput.value = "";
+    localStorage.removeItem("nekossh-bg-url");
+    const opacity = parseFloat(configBgOpacityInput?.value || "0.30");
+    applyBackgroundSettings("", opacity);
+  });
+
   configBgOpacityInput?.addEventListener("input", (e) => {
     const target = e.target as HTMLInputElement;
-    const opacity = parseFloat(target.value);
-    if (opacityValLabel) opacityValLabel.textContent = opacity.toFixed(2);
+    const { numeric: opacity, formatted } = clampAndFormatOpacity(parseFloat(target.value));
+    if (opacityValLabel) opacityValLabel.textContent = formatted;
     localStorage.setItem("nekossh-bg-opacity", opacity.toString());
     applyBackgroundSettings(configBgUrlInput?.value.trim() || "", opacity);
   });
 
   void loadPreferredEditorIntoUi();
-  btnSaveEditorPref?.addEventListener("click", () => {
-    void savePreferredEditorFromUi();
-  });
-
   initFooterPrefsPopover();
 }
 
@@ -272,14 +333,7 @@ async function savePreferredEditorFromUi() {
 
 function applyBackgroundSettings(url: string, opacity: number) {
   if (bgImageLayer) {
-    if (url) {
-      bgImageLayer.style.backgroundImage = `url('${url}')`;
-      bgImageLayer.style.opacity = opacity.toString();
-      bgImageLayer.style.zIndex = "-1";
-    } else {
-      bgImageLayer.style.backgroundImage = "";
-      bgImageLayer.style.opacity = "0";
-    }
+    applyBackgroundStyle(bgImageLayer, url, opacity, convertFileSrc);
   }
 }
 
@@ -1748,10 +1802,11 @@ function startNewSshConnection(profile: ConnectionProfile) {
     getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() ||
     "monospace";
   const term = new Terminal({
+    allowTransparency: true,
     cursorBlink: true,
     cursorStyle: "block",
     theme: {
-      background: "#080409",
+      background: "transparent",
       foreground: "#f8f8f2",
       cursor: "#ff69b4",
       cursorAccent: "#080409",

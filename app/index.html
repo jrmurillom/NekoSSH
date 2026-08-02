@@ -93,14 +93,19 @@
                   id="config-editor-path"
                   type="text"
                   spellcheck="false"
-                  placeholder="Ruta del ejecutable (vacío = asociación del SO)"
+                  placeholder="Ruta del ejecutable (vacío = SO)"
                 />
-                <button type="button" id="btn-save-editor-pref" class="btn-secondary">Guardar</button>
+                <button type="button" id="btn-browse-editor" class="btn-icon-action" title="Buscar ejecutable" aria-label="Buscar ejecutable"></button>
+                <button type="button" id="btn-save-editor-pref" class="btn-icon-action" title="Guardar editor" aria-label="Guardar editor"></button>
+                <input type="file" id="file-input-editor" style="display: none;" accept="*" />
               </div>
-              <label class="config-label" for="config-bg-url">Fondo</label>
+              <label class="config-label" for="config-bg-url">Fondo de pantalla</label>
               <div class="config-row">
                 <input id="config-bg-url" type="text" spellcheck="false" placeholder="URL o ruta de imagen" />
-                <button type="button" id="btn-apply-bg" class="btn-secondary">Aplicar</button>
+                <button type="button" id="btn-browse-bg" class="btn-icon-action" title="Buscar imagen" aria-label="Buscar imagen"></button>
+                <button type="button" id="btn-apply-bg" class="btn-icon-action" title="Aplicar fondo" aria-label="Aplicar fondo"></button>
+                <button type="button" id="btn-clear-bg" class="btn-icon-action btn-danger-icon" title="Quitar fondo" aria-label="Quitar fondo"></button>
+                <input type="file" id="file-input-bg" style="display: none;" accept="image/*" />
               </div>
               <label class="config-label" for="config-bg-opacity">Opacidad <span id="opacity-val">0.30</span></label>
               <input id="config-bg-opacity" type="range" min="0" max="1" step="0.01" value="0.30" />

@@ -92,7 +92,7 @@ body {
   height: 100%;
   background-size: cover;
   background-position: center;
-  z-index: -2;
+  z-index: -1;
   transition: opacity var(--transition-normal);
 }
 
@@ -103,7 +103,7 @@ body {
   width: 100%;
   height: 100%;
   background-color: var(--bg-dark-base);
-  z-index: -1;
+  z-index: -2;
   transition: opacity var(--transition-normal);
 }
 
@@ -770,12 +770,50 @@ body {
 .config-row,
 .input-browse-row {
   display: flex;
-  gap: 8px;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
 }
 
 .config-row input,
 .input-browse-row input {
   flex: 1;
+  min-width: 0;
+}
+
+.btn-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: var(--border-radius-sm, 6px);
+  border: 1px solid rgba(255, 105, 180, 0.25);
+  background: rgba(255, 105, 180, 0.1);
+  color: var(--color-sakura-light, #ffb6c1);
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: all var(--transition-fast);
+}
+
+.btn-icon-action:hover {
+  background: rgba(255, 105, 180, 0.25);
+  color: #ffffff;
+  border-color: rgba(255, 105, 180, 0.5);
+  box-shadow: 0 0 10px rgba(255, 105, 180, 0.3);
+}
+
+.btn-icon-action.btn-danger-icon {
+  border-color: rgba(255, 70, 70, 0.3);
+  background: rgba(255, 70, 70, 0.1);
+  color: #ff6b6b;
+}
+
+.btn-icon-action.btn-danger-icon:hover {
+  background: rgba(255, 70, 70, 0.3);
+  color: #ffffff;
+  box-shadow: 0 0 10px rgba(255, 70, 70, 0.4);
 }
 
 input[type="text"],
@@ -983,7 +1021,9 @@ input[type="range"]::-webkit-slider-thumb {
   height: auto;
   display: none;
   flex-direction: column;
-  background: #080409; /* Fondo súper oscuro para la terminal */
+  background: rgba(8, 4, 9, 0.75); /* Fondo cristal traslúcido para ver la imagen */
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border-radius: 0 var(--border-radius-lg, 24px) var(--border-radius-lg, 24px) var(--border-radius-lg, 24px);
   border: 1px solid rgba(255, 105, 180, 0.25);
   box-shadow: 0 0 30px rgba(255, 105, 180, 0.18), var(--glass-shadow);
@@ -1047,6 +1087,14 @@ input[type="range"]::-webkit-slider-thumb {
   position: relative;
   padding: 0;
   overflow: hidden;
+  background: transparent !important;
+}
+
+.terminal-canvas-container .xterm,
+.terminal-canvas-container .xterm-viewport,
+.terminal-canvas-container .xterm-screen,
+.terminal-canvas-container canvas {
+  background: transparent !important;
 }
 
 /* --- Modales --- */
