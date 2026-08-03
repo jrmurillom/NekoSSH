@@ -9,7 +9,7 @@ import { alertDialog, confirmDialog, showContextMenu } from "./overlays";
 import { initSnippetsUi } from "./snippets-ui";
 import { stripTrailingPasteNoise } from "./strip-trailing-paste";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { clampAndFormatOpacity, applyBackgroundStyle } from "./bg-settings-helper";
+import { clampAndFormatOpacity, calculateTerminalOverlayOpacity, resolveBackgroundUrl } from "./bg-settings-helper";
 
 // --- Interfaces ---
 interface ConnectionFolder {
@@ -96,7 +96,6 @@ const activeTerminals = new Map<string, ActiveTerminal>();
 let currentActiveTerminalId: string | null = null;
 
 // --- DOM Elements ---
-let bgImageLayer: HTMLElement | null = null;
 let configBgUrlInput: HTMLInputElement | null = null;
 let configBgOpacityInput: HTMLInputElement | null = null;
 let opacityValLabel: HTMLElement | null = null;
@@ -177,7 +176,6 @@ let btnCloseAllTerminals: HTMLButtonElement | null = null;
 
 // --- Initialize App Settings (Background & Opacity + editor externo) ---
 function initSettings() {
-  bgImageLayer = document.getElementById("bg-image-layer");
   configBgUrlInput = document.getElementById("config-bg-url") as HTMLInputElement;
   configBgOpacityInput = document.getElementById("config-bg-opacity") as HTMLInputElement;
   opacityValLabel = document.getElementById("opacity-val");
@@ -332,9 +330,20 @@ async function savePreferredEditorFromUi() {
 }
 
 function applyBackgroundSettings(url: string, opacity: number) {
-  if (bgImageLayer) {
-    applyBackgroundStyle(bgImageLayer, url, opacity, convertFileSrc);
-  }
+  const targetUrl = url || localStorage.getItem("nekossh-bg-url") || "";
+  const resolvedUrl = resolveBackgroundUrl(targetUrl, convertFileSrc);
+  const overlayOpacity = calculateTerminalOverlayOpacity(opacity);
+
+  const terminalPanels = document.querySelectorAll<HTMLElement>(".terminal-panel");
+  terminalPanels.forEach((panel) => {
+    if (resolvedUrl) {
+      panel.style.backgroundImage = `url("${resolvedUrl}")`;
+      panel.style.setProperty("--terminal-overlay-opacity", overlayOpacity.toString());
+    } else {
+      panel.style.backgroundImage = "";
+      panel.style.setProperty("--terminal-overlay-opacity", "0.95");
+    }
+  });
 }
 
 // --- Initialize Navigation Tabs ---
@@ -1796,6 +1805,10 @@ function startNewSshConnection(profile: ConnectionProfile) {
 
   mainDisplayArea?.appendChild(panelEl);
 
+  const savedBgUrl = localStorage.getItem("nekossh-bg-url") || "";
+  const savedOpacity = parseFloat(localStorage.getItem("nekossh-bg-opacity") || "0.30");
+  applyBackgroundSettings(savedBgUrl, savedOpacity);
+
   // 3. Inicializar xterm.js (tipografía desde tokens CSS en runtime)
   const canvasContainer = panelEl.querySelector(`.terminal-canvas-container`) as HTMLElement;
   const monoFontFamily =
@@ -1806,7 +1819,7 @@ function startNewSshConnection(profile: ConnectionProfile) {
     cursorBlink: true,
     cursorStyle: "block",
     theme: {
-      background: "transparent",
+      background: "rgba(0, 0, 0, 0)",
       foreground: "#f8f8f2",
       cursor: "#ff69b4",
       cursorAccent: "#080409",

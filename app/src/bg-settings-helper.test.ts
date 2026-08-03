@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { clampAndFormatOpacity, resolveBackgroundUrl, applyBackgroundStyle } from "./bg-settings-helper";
+import { clampAndFormatOpacity, resolveBackgroundUrl, applyBackgroundStyle, calculateTerminalOverlayOpacity } from "./bg-settings-helper";
 
 describe("bg-settings-helper", () => {
   describe("resolveBackgroundUrl", () => {
@@ -61,6 +61,14 @@ describe("bg-settings-helper", () => {
 
       expect(mockElement.style.backgroundImage).toBe("");
       expect(mockElement.style.opacity).toBe("0");
+    });
+  });
+
+  describe("calculateTerminalOverlayOpacity", () => {
+    it("debe calcular la tinte de sobreposicion de la terminal segun la opacidad", () => {
+      expect(calculateTerminalOverlayOpacity(1.0)).toBe(0.15);
+      expect(calculateTerminalOverlayOpacity(0.0)).toBe(0.95);
+      expect(calculateTerminalOverlayOpacity(0.3)).toBe(0.71);
     });
   });
 });

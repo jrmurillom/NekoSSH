@@ -1021,13 +1021,31 @@ input[type="range"]::-webkit-slider-thumb {
   height: auto;
   display: none;
   flex-direction: column;
-  background: rgba(8, 4, 9, 0.75); /* Fondo cristal traslúcido para ver la imagen */
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-clip: padding-box;
   border-radius: 0 var(--border-radius-lg, 24px) var(--border-radius-lg, 24px) var(--border-radius-lg, 24px);
   border: 1px solid rgba(255, 105, 180, 0.25);
   box-shadow: 0 0 30px rgba(255, 105, 180, 0.18), var(--glass-shadow);
   overflow: hidden;
+  --terminal-overlay-opacity: 0.70;
+}
+
+.terminal-panel::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  background: rgba(8, 4, 9, var(--terminal-overlay-opacity));
+  z-index: 1;
+  pointer-events: none;
+}
+
+.terminal-panel-header,
+.terminal-canvas-container {
+  position: relative;
+  z-index: 2;
 }
 
 .terminal-panel.active {
@@ -1082,19 +1100,15 @@ input[type="range"]::-webkit-slider-thumb {
   50% { opacity: 0.35; }
 }
 
-.terminal-canvas-container {
-  flex: 1;
-  position: relative;
-  padding: 0;
-  overflow: hidden;
-  background: transparent !important;
-}
-
+.terminal-canvas-container,
+.terminal-canvas-container *,
 .terminal-canvas-container .xterm,
 .terminal-canvas-container .xterm-viewport,
 .terminal-canvas-container .xterm-screen,
+.terminal-canvas-container .xterm-rows,
 .terminal-canvas-container canvas {
   background: transparent !important;
+  background-color: transparent !important;
 }
 
 /* --- Modales --- */
