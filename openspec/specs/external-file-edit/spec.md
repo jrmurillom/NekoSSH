@@ -3,9 +3,7 @@
 ## Purpose
 
 Edición de archivos remotos con editor externo local: descarga a temp, vigilancia, confirmación glass antes de subir, cleanup, y reintento con sudo no interactivo tras fallos de permisos.
-
 ## Requirements
-
 ### Requirement: Sesión de edición externa con archivo temporal
 El sistema SHALL, al iniciar una edición externa, descargar el archivo remoto a un directorio temporal aislado de la aplicación (por `edit_id`), registrar la asociación `terminal_id` + `remote_path` + `local_path`, y abrir el archivo local con el editor configurado. Si ya existe una sesión activa para el mismo `terminal_id` y `remote_path`, el sistema SHALL reutilizarla (reabrir el editor) en lugar de duplicar el temporal.
 
@@ -67,15 +65,15 @@ El sistema SHALL detener el watcher y eliminar best-effort el directorio tempora
 - **THEN** el sistema no elimina el archivo temporal de esa sesión hasta terminar el intento
 
 ### Requirement: Desconexión durante edición
-Si la sesión SSH se desconecta o cierra mientras hay ediciones activas, el sistema SHALL detener watchers, no completar una subida pendiente, cerrar cualquier dialog A1 de subida sin aplicar cambios remotos, e informar al usuario. El archivo local temporal SHOULD conservarse de forma temporal para no perder trabajo del usuario; el reattach automático de la sesión de edición tras reconnect manual NO es obligatorio en este change.
+Si la sesión SSH se desconecta o cierra mientras hay ediciones activas (es decir, en fase de confirmación de subida, subida en curso, o con cambios locales detectados pendientes de procesar), el sistema SHALL detener watchers, no completar una subida pendiente, cerrar cualquier dialog A1 de subida sin aplicar cambios remotos, e informar al usuario. El archivo local temporal de dichas ediciones activas SHOULD conservarse de forma temporal para no perder trabajo del usuario. Si no hay ediciones activas (todas las sesiones de edición asociadas están limpias y en estado de vigilancia pasiva sin cambios pendientes), el sistema SHALL cerrar las sesiones de edición de manera silenciosa, detener los watchers y eliminar los archivos temporales sin mostrar ninguna advertencia al usuario.
 
 #### Scenario: Disconnect con confirm abierto
 - **WHEN** se desconecta la sesión SSH con un dialog “¿Subir al servidor?” abierto
-- **THEN** el dialog se cierra sin subir y el usuario recibe aviso de que no se pudo subir
+- **THEN** el dialog se cierra sin subir y el usuario recibe aviso de que no se pudo subir únicamente si el archivo temporal tiene cambios locales reales pendientes de guardar; de lo contrario se cierra en silencio sin emitir advertencia
 
 #### Scenario: Trabajo local tras disconnect
 - **WHEN** ocurre desconexión mid-edit
-- **THEN** el sistema deja de intentar subir automáticamente y conserva el temp local según la política de cleanup (no borrado inmediato silencioso del trabajo del usuario)
+- **THEN** el sistema deja de intentar subir automáticamente y conserva el temp local únicamente si está sucio/dirty, limpiándolo silenciosamente si ya estaba sincronizado con el servidor
 
 ### Requirement: Política de archivos grandes y binarios
 El sistema SHALL rechazar el inicio de edición externa cuando el tamaño del archivo remoto supera el límite por defecto de **10 MiB**, con mensaje claro en español. Ante archivos que parezcan binarios (heurística), el sistema SHALL pedir confirmación A1 antes de descargar/abrir; si el usuario cancela, no inicia la sesión de edición.
@@ -158,3 +156,4 @@ La verificación automatizada y las corridas de agente que cubran el reintento c
 #### Scenario: Verificación de agente del sudo sin mutar el lab
 - **WHEN** un agente ejecuta desktop-commands o desktop-ui verification del flujo sudo sin sandbox remoto disposable documentado
 - **THEN** no escribe en paths remotos del lab; valida con mocks/fixtures locales y documenta N/A para writes remotos live
+

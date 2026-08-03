@@ -101,7 +101,7 @@ fn open_sftp(
     let mut attempts = 0;
     loop {
         let open_res = {
-            let mut live = live_arc.lock().unwrap();
+            let mut live = live_arc.lock().unwrap_or_else(|e| e.into_inner());
             let pumped = pump_pty(&mut live, &mut pump_buf);
             let res = live.session.sftp();
             (res, pumped)
@@ -584,23 +584,26 @@ pub fn disconnect_edit_sessions_for_terminal(
     let mut ids = Vec::new();
     for rec in taken {
         stop_watcher(watchers, &rec.edit_id);
-        ids.push(rec.edit_id.clone());
         // Solo borrar temp si no hay que preservar trabajo del usuario
         if !rec.preserve_temp_on_close {
             if let Some(parent) = rec.local_path.parent() {
                 let _ = std::fs::remove_dir_all(parent);
             }
+        } else {
+            ids.push(rec.edit_id.clone());
         }
     }
-    let _ = app.emit(
-        "edit-session-disconnected",
-        EditSessionDisconnectedPayload {
-            terminal_id: terminal_id.to_string(),
-            edit_ids: ids,
-            message: "La sesión se desconectó; no se pudo subir. El archivo local se conservó temporalmente."
-                .into(),
-        },
-    );
+    if !ids.is_empty() {
+        let _ = app.emit(
+            "edit-session-disconnected",
+            EditSessionDisconnectedPayload {
+                terminal_id: terminal_id.to_string(),
+                edit_ids: ids,
+                message: "La sesión se desconectó; no se pudo subir. El archivo local se conservó temporalmente."
+                    .into(),
+            },
+        );
+    }
 }
 
 // --- Tauri commands ---

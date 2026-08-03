@@ -1042,10 +1042,18 @@ input[type="range"]::-webkit-slider-thumb {
   pointer-events: none;
 }
 
-.terminal-panel-header,
+.terminal-panel-header {
+  position: relative;
+  z-index: 2;
+}
+
 .terminal-canvas-container {
   position: relative;
   z-index: 2;
+  flex: 1;
+  width: 100%;
+  height: calc(100% - 32px);
+  overflow: hidden;
 }
 
 .terminal-panel.active {
@@ -1101,12 +1109,9 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .terminal-canvas-container,
-.terminal-canvas-container *,
 .terminal-canvas-container .xterm,
 .terminal-canvas-container .xterm-viewport,
-.terminal-canvas-container .xterm-screen,
-.terminal-canvas-container .xterm-rows,
-.terminal-canvas-container canvas {
+.terminal-canvas-container .xterm-screen {
   background: transparent !important;
   background-color: transparent !important;
 }

@@ -261,10 +261,10 @@ impl EditSessionRegistry {
             if let Some(mut rec) = self.by_id.remove(&id) {
                 self.index
                     .remove(&Self::index_key(&rec.terminal_id, &rec.remote_path));
-                rec.preserve_temp_on_close = preserve_temps
-                    || rec.phase == EditSessionPhase::ConfirmPending
-                    || rec.phase == EditSessionPhase::Uploading;
-                // Durante upload/confirm no borrar (design)
+                let is_dirty = rec.phase == EditSessionPhase::ConfirmPending
+                    || rec.phase == EditSessionPhase::Uploading
+                    || rec.pending_change_emit;
+                rec.preserve_temp_on_close = is_dirty && preserve_temps;
                 if rec.phase == EditSessionPhase::Uploading
                     || rec.phase == EditSessionPhase::ConfirmPending
                 {

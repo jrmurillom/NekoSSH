@@ -2008,10 +2008,10 @@ function switchActiveTerminal(terminalId: string) {
     if (id === terminalId) {
       term.tabEl.classList.add("active");
       term.panelEl.classList.add("active");
-      term.term.focus();
-      // Pequeño delay para asegurar render correcto
+      // Pequeño delay para asegurar render correcto y foco del DOM
       setTimeout(() => {
         term.fitAddon.fit();
+        term.term.focus();
       }, 50);
     } else {
       term.tabEl.classList.remove("active");

@@ -32,9 +32,9 @@ use preferences::ensure_app_preferences_schema;
 // --- State: UNA Session SSH por terminal (PTY + SFTP como canales) ---
 /// Session compartida: channel PTY + sftp() como canal aparte.
 /// Nunca llamar set_blocking(true) aquí: corrompe el PTY no bloqueante.
-pub(crate) struct LiveSsh {
-    pub(crate) session: Session,
-    pub(crate) channel: ssh2::Channel,
+pub struct LiveSsh {
+    pub session: Session,
+    pub channel: ssh2::Channel,
 }
 
 pub struct SshConnections(pub Arc<Mutex<HashMap<String, Arc<Mutex<LiveSsh>>>>>);
