@@ -3,9 +3,7 @@
 ## Purpose
 
 Explorador de archivos remotos en el sidebar (pestaña Archivos): listado SFTP lazy, navegación de árbol y acciones hacia la terminal activa. SSOT de producto Fase 2.
-
 ## Requirements
-
 ### Requirement: Canal SFTP por sesión de terminal
 El sistema SHALL exponer operaciones SFTP asociadas a cada `terminal_id` con sesión SSH activa, usando la **misma** Session TCP/SSH del PTY (canal subsystem SFTP), sin un segundo login que tumbe la sesión interactiva. Las operaciones SFTP SHALL NOT usar `set_blocking(true)` de forma que corrompa el PTY no bloqueante.
 
@@ -76,6 +74,10 @@ El sistema SHALL permitir escribir en el PTY mientras el usuario lista o navega 
 ### Requirement: Sin sync automático por cd tipado
 El producto NO SHALL exigir que el explorador siga automáticamente el `cd` tipado en la terminal. La navegación del árbol es SFTP (Ir / expand / abrir / Actualizar / Abrir en Terminal).
 
+#### Scenario: No hay sincronización automática
+- **WHEN** el usuario escribe y ejecuta un comando `cd` en la terminal interactiva
+- **THEN** el explorador de archivos remotos no cambia su ruta actual automáticamente
+
 ### Requirement: Inicio de edición externa desde el explorador
 El sistema SHALL permitir iniciar una sesión de edición externa sobre un **archivo** remoto desde el explorador SFTP mediante doble clic en el archivo o mediante el ítem de menú contextual **“Editar”**. El doble clic sobre un directorio MUST conservar el comportamiento de navegación existente (no iniciar edición).
 
@@ -112,3 +114,41 @@ Las pruebas automatizadas y la verificación por agente de download/upload MUST 
 #### Scenario: Harness de transfer local/mock
 - **WHEN** se verifica `sftp_download_file` / `sftp_upload_file` en tests o harness de agente
 - **THEN** no se escribe en paths arbitrarios del servidor de pruebas compartido; se usa mock, fixture local o sandbox disposable documentado
+
+### Requirement: Arrastrar y soltar archivos para subir al explorador
+El sistema SHALL permitir arrastrar archivos locales desde el host y soltarlos sobre el panel del explorador de archivos SFTP para subirlos al servidor remoto. Al arrastrar archivos sobre el panel del explorador de archivos, el sistema SHALL mostrar un overlay visual con diseño cyberpunk indicando la acción de soltar y el destino actual. Si el cursor se sitúa sobre un nodo de carpeta específico del árbol, el sistema SHALL resaltar visualmente esa carpeta y actualizar el destino en el overlay para reflejar esa subcarpeta. Al soltar los archivos, el sistema SHALL solicitar confirmación al usuario mediante un diálogo A1 indicando el nombre del archivo (o cantidad de archivos) y la ruta remota de destino. Si el usuario confirma, el sistema SHALL subir los archivos correspondientes a la ruta remota y actualizar el listado del explorador.
+
+#### Scenario: Arrastrar sobre el panel general del explorador
+- **WHEN** el usuario arrastra archivos sobre el panel del explorador de archivos sin apuntar a una carpeta específica
+- **THEN** el sistema muestra el overlay de dropzone con el path actual de navegación (`explorerCwd`) como destino
+
+#### Scenario: Arrastrar apuntando a una carpeta del árbol
+- **WHEN** el usuario arrastra archivos apuntando a una carpeta específica del árbol
+- **THEN** el sistema resalta esa carpeta y muestra el path de esa carpeta como destino en el overlay de dropzone
+
+#### Scenario: Cancelar subida tras soltar
+- **WHEN** el usuario suelta los archivos y cancela el diálogo de confirmación
+- **THEN** no se sube ningún archivo y el explorador permanece sin cambios
+
+#### Scenario: Confirmar subida de un archivo
+- **WHEN** el usuario suelta un archivo, confirma el diálogo y el upload SFTP es exitoso
+- **THEN** el sistema sube el archivo a la ruta de destino remota y refresca el explorador de archivos
+
+### Requirement: Portapapeles inter-sesión Copiar SCP y Pegar SCP
+El sistema SHALL permitir al usuario copiar un archivo o carpeta desde el explorador SFTP de una sesión activa (origen) y pegarlo en el explorador SFTP de otra sesión activa (destino) mediante las opciones de menú contextual denominadas exactamente "copiar scp" y "pegar scp".
+- Al elegir "copiar scp" sobre un archivo, el sistema SHALL almacenar en el portapapeles de la aplicación el ID de la terminal origen y la ruta remota absoluta.
+- La opción "pegar scp" en el menú contextual del árbol o fondo del explorador SHALL habilitarse únicamente si hay un elemento almacenado en el portapapeles y existe una sesión activa como destino.
+- Al activar "pegar scp", el sistema SHALL mostrar un diálogo A1 solicitando confirmación con el nombre del archivo y las rutas absolutas de origen y destino.
+- Si el usuario confirma, el sistema SHALL transferir los datos en streaming a través de la memoria local y refrescar la ubicación destino.
+
+#### Scenario: Copiar SCP de un archivo
+- **WHEN** el usuario selecciona "copiar scp" en el menú contextual de un archivo
+- **THEN** el sistema registra el archivo y el ID de terminal origen en memoria y la opción "pegar scp" queda disponible para usarse
+
+#### Scenario: Pegar SCP con confirmación
+- **WHEN** el usuario hace clic derecho en el explorador destino, selecciona "pegar scp" y confirma en el diálogo A1
+- **THEN** el sistema inicia el streaming directo de datos, crea el archivo en el servidor destino, y refresca la ubicación del explorador al completar con éxito
+
+#### Scenario: Cancelar Pegar SCP
+- **WHEN** el usuario selecciona "pegar scp" y presiona cancelar o escape en el diálogo de confirmación
+- **THEN** la transferencia se aborta y no se crea ni modifica ningún archivo en el destino

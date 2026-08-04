@@ -23,6 +23,8 @@ import {
   MoreVertical,
   Settings,
   Check,
+  Terminal,
+  Clipboard,
 } from "lucide";
 
 export type IconOptions = {
@@ -79,4 +81,6 @@ export const AppIcons = {
   moreVertical: MoreVertical,
   settings: Settings,
   check: Check,
+  terminal: Terminal,
+  clipboard: Clipboard,
 } as const;

@@ -46,6 +46,8 @@ interface ActiveTerminal {
   tabEl: HTMLElement;
   isConnected: boolean;
   isReconnecting: boolean;
+  explorerCwd?: string;
+  explorerRoot?: ExplorerNodeState | null;
 }
 
 interface SshEventPayload {
@@ -168,6 +170,11 @@ let explorerCwd = "";
 let explorerBoundTerminalId: string | null = null;
 let contextMenuPath: string | null = null;
 let explorerLoading = false;
+let scpClipboard: {
+  terminalId: string;
+  path: string;
+  name: string;
+} | null = null;
 
 // Terminal layout elements
 let mainDisplayArea: HTMLElement | null = null;
@@ -420,6 +427,49 @@ function initTabs() {
   });
 
   document.addEventListener("click", () => hideContextMenu());
+
+  filesTree?.addEventListener("contextmenu", async (ev) => {
+    ev.preventDefault();
+    if (ev.target !== filesTree) return; // solo fondo
+    if (!currentActiveTerminalId) return;
+    hideContextMenu();
+    const items = [];
+    if (scpClipboard && scpClipboard.terminalId !== currentActiveTerminalId) {
+      items.push({ id: "paste-scp", label: "Pegar scp", icon: AppIcons.clipboard });
+    }
+    if (items.length > 0) {
+      const action = await showContextMenu(ev.clientX, ev.clientY, items);
+      if (action === "paste-scp") {
+        void handlePasteScp(explorerCwd);
+      }
+    }
+  });
+}
+
+async function handlePasteScp(targetDir: string) {
+  if (!scpClipboard || !currentActiveTerminalId) return;
+  const targetPath = (targetDir.endsWith("/") ? targetDir : targetDir + "/") + scpClipboard.name;
+  const ok = await confirmDialog({
+    title: "Pegar scp",
+    message: `¿Copiar "${scpClipboard.name}" a "${targetPath}"?`,
+    confirmLabel: "Copiar",
+  });
+  if (!ok) return;
+
+  setExplorerStatus(`Copiando ${scpClipboard.name}…`);
+  try {
+    await invoke("sftp_copy_between_sessions", {
+      sourceTerminalId: scpClipboard.terminalId,
+      sourcePath: scpClipboard.path,
+      targetTerminalId: currentActiveTerminalId,
+      targetPath,
+    });
+    setExplorerStatus(`Copia exitosa: ${scpClipboard.name}`);
+    await refreshExplorerForActiveTerminal(true);
+  } catch (err) {
+    console.error("Error al copiar scp:", err);
+    setExplorerStatus(`Error al copiar: ${err}`, true);
+  }
 }
 
 function hideContextMenu() {
@@ -728,18 +778,29 @@ function buildExplorerNodeEl(node: ExplorerNodeState): HTMLElement {
     ev.stopPropagation();
     hideContextMenu();
     if (node.isDir) {
-      if (!filesContextMenu) return;
-      contextMenuPath = node.path;
-      filesContextMenu.style.display = "block";
-      filesContextMenu.style.left = `${ev.clientX}px`;
-      filesContextMenu.style.top = `${ev.clientY}px`;
+      const items = [{ id: "open-terminal", label: "Abrir en Terminal", icon: AppIcons.terminal }];
+      if (scpClipboard && scpClipboard.terminalId !== currentActiveTerminalId) {
+        items.push({ id: "paste-scp", label: "Pegar scp", icon: AppIcons.clipboard });
+      }
+      const action = await showContextMenu(ev.clientX, ev.clientY, items);
+      if (action === "open-terminal") {
+        void openPathInTerminal(node.path);
+      } else if (action === "paste-scp") {
+        void handlePasteScp(node.path);
+      }
       return;
     }
     const action = await showContextMenu(ev.clientX, ev.clientY, [
       { id: "edit", label: "Editar", icon: AppIcons.pencil },
+      { id: "copy-scp", label: "Copiar scp", icon: AppIcons.clipboard },
     ]);
     if (action === "edit") {
       void beginExternalEdit(node);
+    } else if (action === "copy-scp") {
+      if (currentActiveTerminalId) {
+        scpClipboard = { terminalId: currentActiveTerminalId, path: node.path, name: node.name };
+        setExplorerStatus(`Copiado al portapapeles scp: ${node.name}`);
+      }
     }
   });
 
@@ -2001,6 +2062,14 @@ async function reconnectTerminalSession(terminalId: string) {
 }
 
 function switchActiveTerminal(terminalId: string) {
+  if (currentActiveTerminalId) {
+    const outgoing = activeTerminals.get(currentActiveTerminalId);
+    if (outgoing) {
+      outgoing.explorerCwd = explorerCwd;
+      outgoing.explorerRoot = explorerRoot;
+    }
+  }
+
   currentActiveTerminalId = terminalId;
   console.log("Terminal activa cambiada a:", currentActiveTerminalId);
 
@@ -2008,6 +2077,14 @@ function switchActiveTerminal(terminalId: string) {
     if (id === terminalId) {
       term.tabEl.classList.add("active");
       term.panelEl.classList.add("active");
+      
+      explorerCwd = term.explorerCwd ?? "";
+      explorerRoot = term.explorerRoot ?? null;
+      if (filesCwdInput) {
+        filesCwdInput.value = explorerCwd;
+        filesCwdInput.setAttribute("title", explorerCwd);
+      }
+
       // Pequeño delay para asegurar render correcto y foco del DOM
       setTimeout(() => {
         term.fitAddon.fit();

@@ -69,11 +69,12 @@ Si falta un estándar (p. ej. backend HTTP clásico), no inventar uno paralelo: 
 
 ## 5. OpenSpec y agentes
 
-1. Crear artefacts con `/opsx:propose` (o skills opsx equivalentes).
-2. Implementar con `/opsx:apply` siguiendo `tasks.md` y TDD.
-3. Si el plan falla: `/opsx:fix` (sin borrar progreso).
-4. Tras verificación: commit → `/opsx:archive`.
-5. Skills canónicos viven en `ai-specs/skills/` y se exponen por symlinks a `.claude` / `.cursor` / `.agents`.
+1. **Obligatoriedad de la CLI de OpenSpec**: Toda acción de propuesta, diseño, especificación, implementación, corrección y archivado de cambios MUST realizarse estrictamente a través de los comandos de la CLI de OpenSpec (`openspec new change`, `openspec status`, `openspec instructions`, `openspec validate`, `openspec archive`, etc.). Queda estrictamente prohibido que el agente actúe de manera independiente o realice modificaciones al código de la aplicación sin seguir el flujo de la CLI, registrar la planificación en los artefactos correspondientes y obtener autorización humana previa.
+2. Crear artefactos con `/opsx:propose` (o comandos CLI `openspec` equivalentes).
+3. Implementar con `/opsx:apply` siguiendo el checklist de `tasks.md` generado y TDD.
+4. Si el plan falla o cambia de rumbo, usar `/opsx:fix` para mutar los artefactos de planificación únicamente (design, proposal, specs, tasks). Queda estrictamente prohibido realizar cambios en el código de la aplicación durante esta fase hasta que el plan modificado sea validado por la CLI de OpenSpec y aprobado explícitamente por el usuario.
+5. Tras verificación: commit → `/opsx:archive` para consolidar las especificaciones principales.
+6. Skills canónicos viven en `ai-specs/skills/` y se exponen por symlinks a `.claude` / `.cursor` / `.agents`.
 
 ---
 

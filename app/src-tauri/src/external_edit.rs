@@ -1007,3 +1007,157 @@ pub async fn stop_external_edit(
     }
     Ok(())
 }
+
+#[tauri::command]
+pub async fn sftp_copy_between_sessions(
+    app: AppHandle,
+    source_terminal_id: String,
+    source_path: String,
+    target_terminal_id: String,
+    target_path: String,
+    state: State<'_, SshConnections>,
+) -> Result<(), String> {
+    let live_src_arc = with_live_ssh(&state, &source_terminal_id)?;
+    let live_tgt_arc = with_live_ssh(&state, &target_terminal_id)?;
+
+    let app2 = app.clone();
+    let src_tid = source_terminal_id.clone();
+    let tgt_tid = target_terminal_id.clone();
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let sftp_src = open_sftp(&app2, &src_tid, &live_src_arc)?;
+        let sftp_tgt = open_sftp(&app2, &tgt_tid, &live_tgt_arc)?;
+        let mut pump_buf = [0u8; 4096];
+
+        // 1. Abrir archivo origen para lectura
+        let mut file_src = {
+            let mut attempts = 0;
+            loop {
+                let res = {
+                    let mut live = live_src_arc.lock().unwrap();
+                    let pumped = pump_pty(&mut live, &mut pump_buf);
+                    let f = sftp_src.open(Path::new(&source_path));
+                    (f, pumped)
+                };
+                emit_pump(&app2, &src_tid, &res.1);
+                match res.0 {
+                    Ok(f) => break f,
+                    Err(e) => {
+                        if attempts < 200 && is_would_block_ssh(&e) {
+                            attempts += 1;
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                            continue;
+                        }
+                        return Err(format!("Error al abrir origen {}: {}", source_path, e));
+                    }
+                }
+            }
+        };
+
+        // 2. Crear archivo destino para escritura
+        let mut file_tgt = {
+            let mut attempts = 0;
+            loop {
+                let res = {
+                    let mut live = live_tgt_arc.lock().unwrap();
+                    let pumped = pump_pty(&mut live, &mut pump_buf);
+                    let f = sftp_tgt.create(Path::new(&target_path));
+                    (f, pumped)
+                };
+                emit_pump(&app2, &tgt_tid, &res.1);
+                match res.0 {
+                    Ok(f) => break f,
+                    Err(e) => {
+                        if attempts < 200 && is_would_block_ssh(&e) {
+                            attempts += 1;
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                            continue;
+                        }
+                        return Err(format!("Error al crear destino {}: {}", target_path, e));
+                    }
+                }
+            }
+        };
+
+        // 3. Streaming de bytes en chunks de 64 KiB
+        let mut buffer = [0u8; 65536];
+        loop {
+            // Leer origen
+            let mut read_attempts = 0;
+            let bytes_read = loop {
+                let res = {
+                    let mut live = live_src_arc.lock().unwrap();
+                    let pumped = pump_pty(&mut live, &mut pump_buf);
+                    let r = file_src.read(&mut buffer);
+                    (r, pumped)
+                };
+                emit_pump(&app2, &src_tid, &res.1);
+                match res.0 {
+                    Ok(n) => break n,
+                    Err(e) => {
+                        if read_attempts < 200 && e.kind() == std::io::ErrorKind::WouldBlock {
+                            read_attempts += 1;
+                            std::thread::sleep(std::time::Duration::from_millis(10));
+                            continue;
+                        }
+                        return Err(format!("Error de lectura: {}", e));
+                    }
+                }
+            };
+
+            if bytes_read == 0 {
+                break; // EOF
+            }
+
+            // Escribir destino
+            let mut offset = 0;
+            while offset < bytes_read {
+                let write_res = {
+                    let mut live = live_tgt_arc.lock().unwrap();
+                    let pumped = pump_pty(&mut live, &mut pump_buf);
+                    let w = file_tgt.write(&buffer[offset..bytes_read]);
+                    (w, pumped)
+                };
+                emit_pump(&app2, &tgt_tid, &write_res.1);
+                match write_res.0 {
+                    Ok(0) => {
+                        return Err("Escritura remota en destino devolvió 0 bytes".to_string());
+                    }
+                    Ok(n) => offset += n,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                    }
+                    Err(e) => return Err(format!("Error de escritura: {}", e)),
+                }
+            }
+        }
+
+        // 4. Flush final
+        let mut flush_attempts = 0;
+        loop {
+            let res = {
+                let mut live = live_tgt_arc.lock().unwrap();
+                let pumped = pump_pty(&mut live, &mut pump_buf);
+                let f = file_tgt.flush();
+                (f, pumped)
+            };
+            emit_pump(&app2, &tgt_tid, &res.1);
+            match res.0 {
+                Ok(()) => break,
+                Err(e) => {
+                    if flush_attempts < 200 && e.kind() == std::io::ErrorKind::WouldBlock {
+                        flush_attempts += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        continue;
+                    }
+                    return Err(format!("Error de sincronización: {}", e));
+                }
+            }
+        }
+
+        Ok(())
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+

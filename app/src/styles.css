@@ -218,6 +218,7 @@ body {
   flex-direction: column;
   height: 100%;
   min-height: 0;
+  position: relative;
 }
 
 .sidebar-panel.active {
@@ -1880,4 +1881,75 @@ input[type="range"]::-webkit-slider-thumb {
 #snippets-modal .snippets-select option {
   background-color: #140a16;
   color: var(--color-text-primary);
+}
+
+/* 📥 Drag and Drop Explorer Overlay */
+.explorer-dropzone {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 100;
+  background: rgba(26, 21, 35, 0.85);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  border: 2px dashed var(--color-sakura-neon);
+  border-radius: var(--border-radius-md);
+  margin: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  animation: pulse-border 1.5s infinite alternate;
+}
+
+.explorer-dropzone-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--color-text-primary);
+  padding: 16px;
+}
+
+.explorer-dropzone-icon {
+  font-size: 2rem;
+  margin-bottom: 4px;
+}
+
+.explorer-dropzone-text {
+  font-size: 0.9rem;
+  font-weight: bold;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.explorer-dropzone-path {
+  font-size: 0.8rem;
+  color: var(--color-sakura-neon);
+  font-family: var(--font-family-mono);
+  word-break: break-all;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px 8px;
+  border-radius: var(--border-radius-sm);
+  border: 1px solid rgba(255, 105, 180, 0.2);
+}
+
+.files-node-row.drag-over {
+  background: rgba(255, 105, 180, 0.2) !important;
+  border-color: var(--color-sakura-neon) !important;
+  box-shadow: 0 0 8px rgba(255, 105, 180, 0.4) !important;
+}
+
+@keyframes pulse-border {
+  from {
+    border-color: rgba(255, 105, 180, 0.4);
+    box-shadow: 0 0 5px rgba(255, 105, 180, 0.2);
+  }
+  to {
+    border-color: var(--color-sakura-neon);
+    box-shadow: 0 0 15px rgba(255, 105, 180, 0.5);
+  }
 }
