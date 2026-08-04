@@ -17,6 +17,7 @@ Este documento es la **fuente de verdad** de principios, idioma, TDD y enlaces a
 4. **Nombres claros** — identificadores descriptivos; sin abreviaturas opacas.
 5. **Cambios incrementales** — diffs enfocados y revisables.
 6. **Código de aplicación solo en `app/`** — raíz del repo para `docs/`, `openspec/`, agentes y scripts.
+7. **Estilo de Aplicación Nativa (Desactivar Autocompletado)** — Todos los campos `<input>` de texto, número o búsqueda en el frontend SHALL incluir el atributo `autocomplete="off"` de forma explícita para evitar que la WebView guarde historial de autocompletado y superponga desplegables del navegador sobre la interfaz.
 
 ---
 

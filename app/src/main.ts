@@ -10,6 +10,7 @@ import { initSnippetsUi } from "./snippets-ui";
 import { stripTrailingPasteNoise } from "./strip-trailing-paste";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { clampAndFormatOpacity, calculateTerminalOverlayOpacity, resolveBackgroundUrl } from "./bg-settings-helper";
+import { parseRemoteHistoryLines, copyCommandToClipboard } from "./modules/remote-history-helper";
 
 // --- Interfaces ---
 interface ConnectionFolder {
@@ -2330,21 +2331,7 @@ async function loadRemoteHistory() {
       limit: historyLimit,
     });
 
-    historyItems = rawLines
-      .filter((line) => line.trim().length > 0)
-      .map((line) => {
-        if (line.startsWith(": ")) {
-          const match = line.match(/^:\s*(\d+):[^;]*;(.*)$/);
-          if (match) {
-            const ts = parseInt(match[1], 10) * 1000;
-            const dateStr = new Date(ts).toLocaleString();
-            return { date: dateStr, command: match[2] };
-          }
-        }
-        return { date: "N/D", command: line };
-      })
-      .filter((item) => !item.command.match(/^#\d+$/));
-
+    historyItems = parseRemoteHistoryLines(rawLines);
     historyItems.reverse();
     historySelectedRowIndex = historyItems.length > 0 ? 0 : -1;
     renderHistoryList();
@@ -2408,10 +2395,10 @@ function renderHistoryList() {
     injectBtn.title = "Pegar en terminal";
     setButtonIcon(injectBtn, AppIcons.copy, { size: 14, className: "icon--sm" }); // Reutilizar AppIcons.copy exacto de snippets
 
-    // Clic en el botón: INYECTA
+    // Clic en el botón: SOLO COPIA AL PORTAPAPELES
     injectBtn.addEventListener("click", (e) => {
       e.stopPropagation();
-      injectHistoryCommand(item.command, false);
+      void copyCommandToClipboard(item.command);
     });
 
     actions.appendChild(injectBtn);
@@ -2424,7 +2411,7 @@ function renderHistoryList() {
   }
 }
 
-function injectHistoryCommand(command: string, execute: boolean) {
+async function injectHistoryCommand(command: string, execute: boolean) {
   closeHistoryModal();
   if (!currentActiveTerminalId) return;
   const term = activeTerminals.get(currentActiveTerminalId);

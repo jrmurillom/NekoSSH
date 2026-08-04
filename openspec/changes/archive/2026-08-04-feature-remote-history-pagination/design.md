@@ -47,7 +47,13 @@ Actualmente xterm.js delega el atajo `Ctrl+R` de forma transparente al shell rem
 ### Corrección de Ruta (Fix)
 - **Decisión**: Para respetar la consistencia estética cyberpunk-sakura y evitar la invención de clases CSS redundantes, se descartan los nuevos estilos específicos `.history-modal-content`, `.history-table`, etc. En su lugar, el modal del historial reutilizará la misma estructura, contenedor de barra de búsqueda y clases visuales del modal de snippets (`.snippets-modal-content`, `.snippets-toolbar`, etc.).
 - **Botón e Icono**: Se descarta el uso del icono custom `AppIcons.terminal`. Para realizar la inyección de comandos, el modal de historial remoto reutilizará el mismo botón con el icono de copiar (`AppIcons.copy`) estilizado idénticamente a como está en la lista de snippets.
-- **Buscador**: El modal de historial remoto reutilizará el mismo estilo de barra de búsqueda y el input con las clases de snippets.
+- **Buscador**: El modal de historial remoto reutilizará el mismo estilo de barra de búsqueda y el input con las clases de snippets. Se compartirán explícitamente las reglas de CSS de `#snippets-search` con `#history-search` (incluyendo los estados de focus y placeholder) para asegurar que se muestren e interactúen de forma idéntica.
+- **Acción de Copiado (Clipboard)**: Para que el botón de copiar actúe de acuerdo a su nombre e icono, al hacer clic en él se SHALL copiar el comando al portapapeles de la máquina local (`navigator.clipboard.writeText`) además de inyectarse en la terminal activa.
+- **Parser de Historial de Doble Estado (Bash y Zsh)**: Se implementará un parser en un módulo independiente (`remote-history-helper.ts`) que procese las líneas de historial de forma secuencial y stateful. Debe soportar:
+  - Formato Zsh extendido (`: timestamp:duration;comando`).
+  - Formato Bash extendido (línea de timestamp `#<unix_timestamp>` seguida por la línea del comando en la siguiente iteración).
+- **Pruebas Unitarias**: Para asegurar la estabilidad y corrección del parser frente a diferentes formatos de historial, se implementará un archivo de pruebas unitarias (`remote-history-helper.test.ts`) con Vitest para validar todos los escenarios posibles (Bash, Zsh y comandos planos sin fecha).
+- **Prueba del Portapapeles (Clipboard Unit Test)**: Se extraerá la acción de copiado a una función testeable `copyCommandToClipboard` en el helper, mockeando la API de portapapeles de Tauri (`@tauri-apps/plugin-clipboard-manager`) en los tests de Vitest para validar técnicamente que el botón copia el comando correcto en tiempo real.
 
 ## Risks / Trade-offs
 

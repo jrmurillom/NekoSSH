@@ -65,7 +65,7 @@
             <div id="files-empty" class="profile-list-empty">Conecta un servidor para explorar archivos remotos.</div>
             <div id="files-toolbar" class="files-toolbar" style="display: none;">
               <button type="button" id="btn-files-up" class="btn-files-icon" title="Subir" aria-label="Subir"></button>
-              <input id="files-cwd-input" class="files-cwd-input" type="text" spellcheck="false" placeholder="/ruta/remota" title="Ruta remota" />
+              <input id="files-cwd-input" class="files-cwd-input" type="text" spellcheck="false" autocomplete="off" placeholder="/ruta/remota" title="Ruta remota" />
               <button type="button" id="btn-files-go" class="btn-files-icon" title="Ir" aria-label="Ir"></button>
               <button type="button" id="btn-files-refresh" class="btn-files-icon" title="Actualizar" aria-label="Actualizar"></button>
             </div>
@@ -101,6 +101,7 @@
                   id="config-editor-path"
                   type="text"
                   spellcheck="false"
+                  autocomplete="off"
                   placeholder="Ruta del ejecutable (vacío = SO)"
                 />
                 <button type="button" id="btn-browse-editor" class="btn-icon-action" title="Buscar ejecutable" aria-label="Buscar ejecutable"></button>
@@ -109,7 +110,7 @@
               </div>
               <label class="config-label" for="config-bg-url">Fondo de pantalla</label>
               <div class="config-row">
-                <input id="config-bg-url" type="text" spellcheck="false" placeholder="URL o ruta de imagen" />
+                <input id="config-bg-url" type="text" spellcheck="false" autocomplete="off" placeholder="URL o ruta de imagen" />
                 <button type="button" id="btn-browse-bg" class="btn-icon-action" title="Buscar imagen" aria-label="Buscar imagen"></button>
                 <button type="button" id="btn-apply-bg" class="btn-icon-action" title="Aplicar fondo" aria-label="Aplicar fondo"></button>
                 <button type="button" id="btn-clear-bg" class="btn-icon-action btn-danger-icon" title="Quitar fondo" aria-label="Quitar fondo"></button>
@@ -167,23 +168,23 @@
 
           <div class="form-group">
             <label for="prof-name">Nombre del Perfil</label>
-            <input type="text" id="prof-name" required placeholder="Ej. Servidor de Producción" />
+            <input type="text" id="prof-name" required autocomplete="off" placeholder="Ej. Servidor de Producción" />
           </div>
 
           <div class="form-group-row">
             <div class="form-group">
               <label for="prof-host">Host (IP / Dominio)</label>
-              <input type="text" id="prof-host" required placeholder="192.168.1.100" />
+              <input type="text" id="prof-host" required autocomplete="off" placeholder="192.168.1.100" />
             </div>
             <div class="form-group" style="flex: 0 0 100px;">
               <label for="prof-port">Puerto</label>
-              <input type="number" id="prof-port" required value="22" min="1" max="65535" />
+              <input type="number" id="prof-port" required value="22" min="1" max="65535" autocomplete="off" />
             </div>
           </div>
 
           <div class="form-group">
             <label for="prof-username">Usuario</label>
-            <input type="text" id="prof-username" required placeholder="ubuntu" />
+            <input type="text" id="prof-username" required autocomplete="off" placeholder="ubuntu" />
           </div>
 
           <div class="form-group">
@@ -203,7 +204,7 @@
           <div id="auth-key-group" class="form-group" style="display: none;">
             <label for="prof-key-path">Ruta de Llave Privada (.pem, .key, .ppk, etc.)</label>
             <div class="input-browse-row">
-              <input type="text" id="prof-key-path" placeholder="C:\Users\...\id_rsa" />
+              <input type="text" id="prof-key-path" autocomplete="off" placeholder="C:\Users\...\id_rsa" />
               <button type="button" id="btn-browse-key" class="btn-secondary">Examinar...</button>
               <input type="file" id="file-input-key" style="display: none;" accept=".pem,.key,.ppk,id_rsa,*" />
             </div>
@@ -214,7 +215,7 @@
           <div class="form-group-row">
             <div class="form-group">
               <label for="prof-keepalive">Keepalive (segundos)</label>
-              <input type="number" id="prof-keepalive" value="60" min="0" />
+              <input type="number" id="prof-keepalive" value="60" min="0" autocomplete="off" />
             </div>
           </div>
 
@@ -232,12 +233,12 @@
               </div>
               <div class="form-group">
                 <label for="tun-local-port">Puerto Local</label>
-                <input type="number" id="tun-local-port" placeholder="Ej. 8080" />
+                <input type="number" id="tun-local-port" autocomplete="off" placeholder="Ej. 8080" />
               </div>
             </div>
             <div id="tunnel-dest-group" class="form-group" style="display: none;">
               <label for="tun-dest">Destino (Host:Puerto)</label>
-              <input type="text" id="tun-dest" placeholder="localhost:80" />
+              <input type="text" id="tun-dest" autocomplete="off" placeholder="localhost:80" />
             </div>
           </div>
 
@@ -256,7 +257,7 @@
           <button type="button" id="btn-close-snippets" class="btn-icon" title="Cerrar" aria-label="Cerrar"></button>
         </div>
         <div class="snippets-toolbar">
-          <input id="snippets-search" class="snippets-field" type="search" placeholder="Buscar…" spellcheck="false" />
+          <input id="snippets-search" class="snippets-field" type="search" autocomplete="off" placeholder="Buscar…" spellcheck="false" />
           <button type="button" id="btn-snippet-new" class="btn-primary">+ Snippet</button>
         </div>
         <div id="snippets-chips" class="snippets-chips" role="toolbar" aria-label="Categorías"></div>
@@ -266,7 +267,7 @@
           <form id="snippet-category-form">
             <div class="form-group">
               <label for="snippet-category-name">Nombre</label>
-              <input id="snippet-category-name" class="snippets-field" type="text" required placeholder="Ej. Nginx" />
+              <input id="snippet-category-name" class="snippets-field" type="text" required autocomplete="off" placeholder="Ej. Nginx" />
             </div>
             <div class="modal-actions">
               <button type="button" id="btn-snippet-category-cancel" class="btn-secondary">Cancelar</button>
@@ -283,7 +284,7 @@
             </div>
             <div class="form-group">
               <label for="snippet-form-title">Título</label>
-              <input id="snippet-form-title" class="snippets-field" type="text" required />
+              <input id="snippet-form-title" class="snippets-field" type="text" required autocomplete="off" />
             </div>
             <div class="form-group">
               <label for="snippet-form-body">Contenido</label>
@@ -306,7 +307,7 @@
           <button type="button" id="btn-close-history" class="btn-icon" title="Cerrar" aria-label="Cerrar"></button>
         </div>
         <div class="snippets-toolbar">
-          <input id="history-search" class="snippets-field" type="search" placeholder="Filtrar comandos..." spellcheck="false" />
+          <input id="history-search" class="snippets-field" type="search" autocomplete="off" placeholder="Filtrar comandos..." spellcheck="false" />
         </div>
         <div id="history-list" class="snippets-list">
           <!-- Cargado dinámicamente -->
