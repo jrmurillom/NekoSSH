@@ -24,39 +24,71 @@ Principios:
 
 ---
 
-## 2. Tokens (CSS Custom Properties)
+---
 
-Definir en el stylesheet raíz de la app y heredar globalmente. No hardcodear hex en componentes salvo excepciones documentadas (p. ej. canvas de terminal opaco).
+## 2. Sistema de Temas Conceptuales
+
+NekoSSH soporta 8 temas visuales conceptuales aplicados mediante el atributo `data-theme` en el elemento `<html>`. El tema predeterminado es `nekossh` (Cyber-Sakura). La selección persiste en `localStorage` bajo la clave `nekossh-theme`.
+
+### Catálogo de Temas
+
+| ID | Nombre | Concepto | Dominante | Acento |
+|---|---|---|---|---|
+| `nekossh` | NekoSSH (Default) | Cyber-Sakura clásico | `#ff69b4` (Sakura) | `#00ffff` (Cyan) |
+| `hatsune-miku` | Hatsune Miku | Vocaloid Teal | `#39c5bb` (Teal) | `#e84f8a` (Pink) |
+| `rei-ayanami` | Rei Ayanami | Evangelion Plugsuit | `#4a7dbd` (Blue) | `#c0392b` (Red) |
+| `neon-evangelion` | Neon Evangelion | EVA Unit-01 | `#66ff00` (Neon Green) | `#ff6600` (Orange) |
+| `cyberpunk-david` | Cyberpunk David | Sandevistan Gold | `#f5c518` (Gold) | `#e63946` (Red) |
+| `cyberpunk-lucy` | Cyberpunk Lucy | Netrunner Magenta | `#e040fb` (Magenta) | `#29b6f6` (Cyan) |
+| `persona5` | Persona 5 | Phantom Thieves | `#e60012` (Crimson) | `#ffffff` (White) |
+| `sailor-moon` | Sailor Moon | Serena Moon Light | `#ffd700` (Gold) | `#ff69b4` (Pink) |
+
+---
+
+## 3. Tokens Semánticos (CSS Custom Properties)
+
+Definidos en `:root` y redefinidos en cada bloque `[data-theme="<id>"]`.
 
 ```css
 :root {
-  /* Paleta */
+  /* Paleta Semántica */
   --bg-dark-base: #0c060d;
   --bg-dark-card: rgba(20, 10, 22, 0.75);
-  --color-sakura-neon: #ff69b4;
-  --color-sakura-light: #ffb7d5;
-  --color-cyan-electric: #00ffff;
-  --color-purple-neon: #bd93f9;
+  --color-accent-primary: #ff69b4;
+  --color-accent-light: #ffb7d5;
+  --color-accent-secondary: #00ffff;
+  --color-accent-tertiary: #bd93f9;
   --color-text-primary: #f8f8f2;
   --color-text-muted: #a593ad;
-  --color-success-neon: #39ff14;
-  --color-error-neon: #ff3131;
+  --color-success: #39ff14;
+  --color-error: #ff3131;
+
+  /* RGB para opacidades dinámicas */
+  --color-accent-primary-rgb: 255, 105, 180;
+  --color-accent-secondary-rgb: 0, 255, 255;
+  --color-accent-tertiary-rgb: 189, 147, 249;
+  --color-error-rgb: 255, 49, 49;
+  --bg-dark-base-rgb: 12, 6, 13;
+  --bg-dark-card-rgb: 20, 10, 22;
 
   /* Glass (profundidad — no glow de color) */
   --glass-blur: blur(16px);
-  --glass-border: 1px solid rgba(255, 105, 180, 0.15);
-  --glass-shadow: 0 8px 32px 0 rgba(12, 6, 13, 0.5);
+  --glass-border: 1px solid rgba(var(--color-accent-primary-rgb), 0.15);
+  --glass-shadow: 0 8px 32px 0 rgba(var(--bg-dark-base-rgb), 0.5);
 
-  /* Tipografía */
-  --font-sans: 'Outfit', 'Inter', system-ui, -apple-system, sans-serif;
-  --font-mono: 'Fira Code', 'JetBrains Mono', monospace;
-
-  /* Forma y movimiento */
-  --border-radius-sm: 4px;
-  --border-radius-md: 8px;
-  --border-radius-lg: 16px;
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.3s ease;
+  /* Terminal xterm.js (Canvas runtime map) */
+  --term-foreground: #f8f8f2;
+  --term-cursor: #ff69b4;
+  --term-cursor-accent: #080409;
+  --term-selection-bg: rgba(255, 105, 180, 0.3);
+  --term-black: #000000;
+  --term-red: #ff3131;
+  --term-green: #39ff14;
+  --term-yellow: #ffb86c;
+  --term-blue: #bd93f9;
+  --term-magenta: #ff69b4;
+  --term-cyan: #00ffff;
+  --term-white: #f8f8f2;
 }
 ```
 

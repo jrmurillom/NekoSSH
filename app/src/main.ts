@@ -12,6 +12,152 @@ import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { clampAndFormatOpacity, calculateTerminalOverlayOpacity, resolveBackgroundUrl } from "./bg-settings-helper";
 import { parseRemoteHistoryLines, copyCommandToClipboard } from "./modules/remote-history-helper";
 
+const THEME_TERMINAL_COLORS: Record<string, Record<string, string>> = {
+  "nekossh": {
+    background: "rgba(0, 0, 0, 0)",
+    foreground: "#f8f8f2",
+    cursor: "#ff69b4",
+    cursorAccent: "#080409",
+    selectionBackground: "rgba(255, 105, 180, 0.3)",
+    black: "#000000",
+    red: "#ff3131",
+    green: "#39ff14",
+    yellow: "#ffb86c",
+    blue: "#bd93f9",
+    magenta: "#ff69b4",
+    cyan: "#00ffff",
+    white: "#f8f8f2"
+  },
+  "hatsune-miku": {
+    background: "rgba(0, 0, 0, 0)",
+    foreground: "#e8f4f2",
+    cursor: "#39c5bb",
+    cursorAccent: "#060d0d",
+    selectionBackground: "rgba(57, 197, 187, 0.3)",
+    black: "#000000",
+    red: "#ff4444",
+    green: "#39ff14",
+    yellow: "#e6db74",
+    blue: "#66d9ef",
+    magenta: "#e84f8a",
+    cyan: "#39c5bb",
+    white: "#e8f4f2"
+  },
+  "rei-ayanami": {
+    background: "rgba(0, 0, 0, 0)",
+    foreground: "#dce6f0",
+    cursor: "#4a7dbd",
+    cursorAccent: "#060810",
+    selectionBackground: "rgba(74, 125, 189, 0.3)",
+    black: "#000000",
+    red: "#e74c3c",
+    green: "#39ff14",
+    yellow: "#f0c674",
+    blue: "#4a7dbd",
+    magenta: "#c0392b",
+    cyan: "#6c8ebf",
+    white: "#dce6f0"
+  },
+  "neon-evangelion": {
+    background: "rgba(0, 0, 0, 0)",
+    foreground: "#e8e6f0",
+    cursor: "#66ff00",
+    cursorAccent: "#0a0418",
+    selectionBackground: "rgba(102, 255, 0, 0.3)",
+    black: "#000000",
+    red: "#ff3131",
+    green: "#66ff00",
+    yellow: "#ff6600",
+    blue: "#9b59b6",
+    magenta: "#cc44ff",
+    cyan: "#a3ff66",
+    white: "#e8e6f0"
+  },
+  "cyberpunk-david": {
+    background: "rgba(0, 0, 0, 0)",
+    foreground: "#f0ece0",
+    cursor: "#f5c518",
+    cursorAccent: "#0a0a06",
+    selectionBackground: "rgba(245, 197, 24, 0.3)",
+    black: "#000000",
+    red: "#e63946",
+    green: "#39ff14",
+    yellow: "#f5c518",
+    blue: "#ff8c00",
+    magenta: "#e63946",
+    cyan: "#fad961",
+    white: "#f0ece0"
+  },
+  "cyberpunk-lucy": {
+    background: "rgba(0, 0, 0, 0)",
+    foreground: "#f0e8f5",
+    cursor: "#e040fb",
+    cursorAccent: "#0a0610",
+    selectionBackground: "rgba(224, 64, 251, 0.3)",
+    black: "#000000",
+    red: "#ff3131",
+    green: "#39ff14",
+    yellow: "#f0a0ff",
+    blue: "#29b6f6",
+    magenta: "#e040fb",
+    cyan: "#29b6f6",
+    white: "#f0e8f5"
+  },
+  "persona5": {
+    background: "rgba(0, 0, 0, 0)",
+    foreground: "#ffffff",
+    cursor: "#e60012",
+    cursorAccent: "#080808",
+    selectionBackground: "rgba(230, 0, 18, 0.3)",
+    black: "#000000",
+    red: "#ff0000",
+    green: "#39ff14",
+    yellow: "#ff4d5a",
+    blue: "#ffffff",
+    magenta: "#e60012",
+    cyan: "#999999",
+    white: "#ffffff"
+  },
+  "sailor-moon": {
+    background: "rgba(0, 0, 0, 0)",
+    foreground: "#f5f0ff",
+    cursor: "#ffd700",
+    cursorAccent: "#0a0814",
+    selectionBackground: "rgba(255, 215, 0, 0.3)",
+    black: "#000000",
+    red: "#ff3131",
+    green: "#39ff14",
+    yellow: "#ffd700",
+    blue: "#1e3a5f",
+    magenta: "#ff69b4",
+    cyan: "#ffe766",
+    white: "#f5f0ff"
+  }
+};
+
+function getActiveTheme(): string {
+  return localStorage.getItem("nekossh-theme") || "nekossh";
+}
+
+function applyTheme(themeName: string): void {
+  document.documentElement.dataset.theme = themeName;
+  localStorage.setItem("nekossh-theme", themeName);
+
+  // Sincronizar colores de todos los terminales xterm.js abiertos
+  const termColors = THEME_TERMINAL_COLORS[themeName] || THEME_TERMINAL_COLORS["nekossh"];
+  document.querySelectorAll(".terminal-panel").forEach(panel => {
+    const termInstance = (panel as any).__xterm as Terminal | undefined;
+    if (termInstance) {
+      termInstance.options.theme = { ...termColors };
+    }
+  });
+
+  // Actualizar indicador visual del selector
+  document.querySelectorAll(".theme-item").forEach(item => {
+    item.classList.toggle("is-active", (item as HTMLElement).dataset.themeId === themeName);
+  });
+}
+
 // --- Interfaces ---
 interface ConnectionFolder {
   id?: number;
@@ -332,6 +478,16 @@ function initFooterPrefsPopover() {
     pop.classList.remove("is-open");
     gear.setAttribute("aria-expanded", "false");
   });
+
+  const themeList = document.getElementById("theme-list");
+  if (themeList) {
+    themeList.addEventListener("click", (e) => {
+      const item = (e.target as HTMLElement).closest(".theme-item") as HTMLElement | null;
+      if (item?.dataset.themeId) {
+        applyTheme(item.dataset.themeId);
+      }
+    });
+  }
 }
 
 async function loadPreferredEditorIntoUi() {
@@ -1036,6 +1192,7 @@ function initExternalEditListeners() {
 
 // --- DOM Loaded Listener ---
 window.addEventListener("DOMContentLoaded", () => {
+  applyTheme(getActiveTheme());
   // Inhabilitar menú contextual nativo del navegador en todo el documento
   document.addEventListener("contextmenu", (e) => e.preventDefault());
 
@@ -1911,21 +2068,7 @@ function startNewSshConnection(profile: ConnectionProfile) {
     allowTransparency: true,
     cursorBlink: true,
     cursorStyle: "block",
-    theme: {
-      background: "rgba(0, 0, 0, 0)",
-      foreground: "#f8f8f2",
-      cursor: "#ff69b4",
-      cursorAccent: "#080409",
-      selectionBackground: "rgba(255, 105, 180, 0.3)",
-      black: "#000000",
-      red: "#ff3131",
-      green: "#39ff14",
-      yellow: "#ffb86c",
-      blue: "#bd93f9",
-      magenta: "#ff69b4",
-      cyan: "#00ffff",
-      white: "#f8f8f2"
-    },
+    theme: { ...(THEME_TERMINAL_COLORS[getActiveTheme()] || THEME_TERMINAL_COLORS["nekossh"]) },
     fontFamily: monoFontFamily,
     fontSize: 14,
   });
@@ -1934,6 +2077,7 @@ function startNewSshConnection(profile: ConnectionProfile) {
   term.loadAddon(fitAddon);
 
   term.open(canvasContainer);
+  (panelEl as any).__xterm = term;
   fitAddon.fit();
 
   term.write("\x1b[35;1m[Iniciando sesión SSH en NekoSSH...]\x1b[0m\r\n");
