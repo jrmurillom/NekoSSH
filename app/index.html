@@ -297,5 +297,25 @@
         </div>
       </div>
     </div>
+    
+    <!-- Modal de Historial Remoto (Ctrl+Shift+H) -->
+    <div id="history-modal" class="modal" aria-hidden="true">
+      <div class="modal-content snippets-modal-content">
+        <div class="snippets-modal-header">
+          <h2>Historial Remoto</h2>
+          <button type="button" id="btn-close-history" class="btn-icon" title="Cerrar" aria-label="Cerrar"></button>
+        </div>
+        <div class="snippets-toolbar">
+          <input id="history-search" class="snippets-field" type="search" placeholder="Filtrar comandos..." spellcheck="false" />
+        </div>
+        <div id="history-list" class="snippets-list">
+          <!-- Cargado dinámicamente -->
+        </div>
+        <div class="history-footer">
+          <button type="button" id="btn-history-prev" class="btn-secondary">◀ Cargar más antiguos</button>
+          <button type="button" id="btn-history-next" class="btn-secondary">Ver más recientes ▶</button>
+        </div>
+      </div>
+    </div>
   </body>
 </html>

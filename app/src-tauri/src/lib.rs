@@ -26,7 +26,7 @@ use external_edit::{
     edit_session_upload_with_sudo, get_preferred_external_editor_cmd, manage_edit_state,
     probe_external_edit, set_preferred_external_editor_cmd, sftp_download_file, sftp_upload_file,
     start_external_edit, stop_external_edit, sweep_orphans_on_startup, EditWatchers,
-    sftp_copy_between_sessions,
+    sftp_copy_between_sessions, sftp_read_remote_history_paged,
 };
 use preferences::ensure_app_preferences_schema;
 
@@ -1219,6 +1219,7 @@ pub fn run() {
             dismiss_edit_change,
             stop_external_edit,
             sftp_copy_between_sessions,
+            sftp_read_remote_history_paged,
             list_snippet_categories,
             create_snippet_category,
             delete_snippet_category,

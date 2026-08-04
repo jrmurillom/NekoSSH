@@ -148,6 +148,24 @@ let btnFilesUp: HTMLButtonElement | null = null;
 let btnFilesGo: HTMLButtonElement | null = null;
 let btnFilesRefresh: HTMLButtonElement | null = null;
 
+// Remote history (Fase 5)
+let historyModal: HTMLElement | null = null;
+let btnCloseHistory: HTMLButtonElement | null = null;
+let historySearchInput: HTMLInputElement | null = null;
+let historyListTable: HTMLElement | null = null;
+let btnHistoryPrev: HTMLButtonElement | null = null;
+let btnHistoryNext: HTMLButtonElement | null = null;
+
+interface HistoryCommandItem {
+  date: string;
+  command: string;
+}
+let historyItems: HistoryCommandItem[] = [];
+let historyOffset = 0;
+const historyLimit = 100;
+let historySelectedRowIndex = -1;
+
+
 interface SftpDirEntry {
   name: string;
   path: string;
@@ -1024,6 +1042,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initSnippetsUi();
   initTabs();
   initExternalEditListeners();
+  initHistoryUi();
   
   // Elementos del Terminal Layout
   mainDisplayArea = document.getElementById("main-display-area");
@@ -2196,3 +2215,225 @@ function escapeHtml(str: string): string {
   div.innerText = str;
   return div.innerHTML;
 }
+
+// --- Remote History (Fase 5) ---
+function initHistoryUi() {
+  historyModal = document.getElementById("history-modal");
+  btnCloseHistory = document.getElementById("btn-close-history") as HTMLButtonElement;
+  historySearchInput = document.getElementById("history-search") as HTMLInputElement;
+  historyListTable = document.getElementById("history-list");
+  btnHistoryPrev = document.getElementById("btn-history-prev") as HTMLButtonElement;
+  btnHistoryNext = document.getElementById("btn-history-next") as HTMLButtonElement;
+
+  if (btnCloseHistory) {
+    setButtonIcon(btnCloseHistory, AppIcons.x, { size: 16, className: "icon--md" });
+    btnCloseHistory.addEventListener("click", () => closeHistoryModal());
+  }
+
+  historyModal?.addEventListener("click", (e) => {
+    if (e.target === historyModal) closeHistoryModal();
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && historyModal?.classList.contains("active")) {
+      closeHistoryModal();
+      e.preventDefault();
+      return;
+    }
+
+    // Ctrl+Shift+H (o Ctrl+Alt+H) para abrir el modal flotante
+    if (e.ctrlKey && (e.shiftKey || e.altKey) && e.key.toLowerCase() === "h") {
+      if (currentActiveTerminalId) {
+        e.preventDefault();
+        void openHistoryModal();
+      }
+    }
+  });
+
+  historySearchInput?.addEventListener("input", () => {
+    historySelectedRowIndex = 0;
+    renderHistoryList();
+  });
+
+  historySearchInput?.addEventListener("keydown", (e) => {
+    const listRows = historyListTable?.querySelectorAll(".snippets-row");
+    if (!listRows || listRows.length === 0 || listRows[0].classList.contains("snippets-empty")) return;
+
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      historySelectedRowIndex = (historySelectedRowIndex + 1) % listRows.length;
+      updateRowSelection(listRows as NodeListOf<HTMLElement>);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      historySelectedRowIndex = (historySelectedRowIndex - 1 + listRows.length) % listRows.length;
+      updateRowSelection(listRows as NodeListOf<HTMLElement>);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const query = (historySearchInput?.value ?? "").trim().toLowerCase();
+      const filtered = historyItems.filter((item) => item.command.toLowerCase().includes(query));
+      if (filtered[historySelectedRowIndex]) {
+        injectHistoryCommand(filtered[historySelectedRowIndex].command, e.shiftKey);
+      }
+    }
+  });
+
+  btnHistoryPrev?.addEventListener("click", () => {
+    historyOffset += historyLimit;
+    void loadRemoteHistory();
+  });
+
+  btnHistoryNext?.addEventListener("click", () => {
+    if (historyOffset >= historyLimit) {
+      historyOffset -= historyLimit;
+      void loadRemoteHistory();
+    }
+  });
+}
+
+function updateRowSelection(rows: NodeListOf<HTMLElement>) {
+  rows.forEach((row, idx) => {
+    const isSel = idx === historySelectedRowIndex;
+    row.classList.toggle("is-selected", isSel);
+    if (isSel) {
+      row.scrollIntoView({ block: "nearest" });
+    }
+  });
+}
+
+async function openHistoryModal() {
+  if (!historyModal || !currentActiveTerminalId) return;
+  historyModal.classList.add("active");
+  historyOffset = 0;
+  historySelectedRowIndex = 0;
+  if (historySearchInput) historySearchInput.value = "";
+  if (historyListTable) {
+    historyListTable.innerHTML = `<div class="snippets-empty">Cargando historial remoto...</div>`;
+  }
+  await loadRemoteHistory();
+  queueMicrotask(() => historySearchInput?.focus());
+}
+
+function closeHistoryModal() {
+  historyModal?.classList.remove("active");
+  if (currentActiveTerminalId) {
+    const term = activeTerminals.get(currentActiveTerminalId);
+    term?.term.focus();
+  }
+}
+
+async function loadRemoteHistory() {
+  if (!currentActiveTerminalId) return;
+  try {
+    const rawLines = await invoke<string[]>("sftp_read_remote_history_paged", {
+      terminalId: currentActiveTerminalId,
+      offset: historyOffset,
+      limit: historyLimit,
+    });
+
+    historyItems = rawLines
+      .filter((line) => line.trim().length > 0)
+      .map((line) => {
+        if (line.startsWith(": ")) {
+          const match = line.match(/^:\s*(\d+):[^;]*;(.*)$/);
+          if (match) {
+            const ts = parseInt(match[1], 10) * 1000;
+            const dateStr = new Date(ts).toLocaleString();
+            return { date: dateStr, command: match[2] };
+          }
+        }
+        return { date: "N/D", command: line };
+      })
+      .filter((item) => !item.command.match(/^#\d+$/));
+
+    historyItems.reverse();
+    historySelectedRowIndex = historyItems.length > 0 ? 0 : -1;
+    renderHistoryList();
+  } catch (err) {
+    console.error("Error al leer historial:", err);
+    if (historyListTable) {
+      historyListTable.innerHTML = `<div class="snippets-empty" style="color: var(--color-error-neon);">Error al leer historial: ${escapeHtml(String(err))}</div>`;
+    }
+  }
+}
+
+function renderHistoryList() {
+  if (!historyListTable) return;
+  historyListTable.innerHTML = "";
+
+  const query = (historySearchInput?.value ?? "").trim().toLowerCase();
+  const filtered = historyItems.filter((item) => {
+    return item.command.toLowerCase().includes(query);
+  });
+
+  if (filtered.length === 0) {
+    historyListTable.innerHTML = `<div class="snippets-empty">No se encontraron comandos</div>`;
+    return;
+  }
+
+  filtered.forEach((item, index) => {
+    const row = document.createElement("div");
+    row.className = "snippets-row";
+    if (index === historySelectedRowIndex) {
+      row.classList.add("is-selected");
+    }
+
+    // Clic en la fila: SOLO SELECCIONA ("no baja con un click")
+    row.addEventListener("click", () => {
+      historySelectedRowIndex = index;
+      const listRows = historyListTable!.querySelectorAll(".snippets-row");
+      updateRowSelection(listRows as NodeListOf<HTMLElement>);
+    });
+
+    const text = document.createElement("div");
+    text.className = "snippets-row-text";
+
+    const title = document.createElement("div");
+    title.className = "snippets-row-title";
+    title.style.color = "var(--color-text-muted)";
+    title.style.fontSize = "0.75rem";
+    title.textContent = item.date;
+
+    const cmd = document.createElement("div");
+    cmd.className = "snippets-row-cmd";
+    cmd.textContent = item.command;
+
+    text.append(title, cmd);
+
+    const actions = document.createElement("div");
+    actions.className = "snippets-row-actions";
+
+    const injectBtn = document.createElement("button");
+    injectBtn.type = "button";
+    injectBtn.className = "btn-icon";
+    injectBtn.title = "Pegar en terminal";
+    setButtonIcon(injectBtn, AppIcons.copy, { size: 14, className: "icon--sm" }); // Reutilizar AppIcons.copy exacto de snippets
+
+    // Clic en el botón: INYECTA
+    injectBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      injectHistoryCommand(item.command, false);
+    });
+
+    actions.appendChild(injectBtn);
+    row.append(text, actions);
+    historyListTable!.appendChild(row);
+  });
+
+  if (btnHistoryNext) {
+    btnHistoryNext.disabled = historyOffset === 0;
+  }
+}
+
+function injectHistoryCommand(command: string, execute: boolean) {
+  closeHistoryModal();
+  if (!currentActiveTerminalId) return;
+  const term = activeTerminals.get(currentActiveTerminalId);
+  if (!term) return;
+
+  const data = execute ? `${command}\r` : command;
+  void invoke("write_ssh_input", {
+    terminalId: currentActiveTerminalId,
+    data,
+  });
+}
+

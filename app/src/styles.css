@@ -1839,6 +1839,10 @@ input[type="range"]::-webkit-slider-thumb {
   background: rgba(255, 105, 180, 0.06);
 }
 
+.snippets-row.is-selected {
+  background: rgba(255, 105, 180, 0.15);
+}
+
 .snippets-row-text {
   flex: 1;
   min-width: 0;
@@ -1982,3 +1986,19 @@ input[type="range"]::-webkit-slider-thumb {
     box-shadow: 0 0 15px rgba(255, 105, 180, 0.5);
   }
 }
+
+/* Modal de Historial Remoto (Fase 5) */
+.history-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-shrink: 0;
+  gap: 12px;
+}
+
+.history-footer .btn-secondary {
+  flex: 1;
+  text-align: center;
+  justify-content: center;
+}
+

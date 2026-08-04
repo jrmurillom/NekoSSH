@@ -1161,3 +1161,61 @@ pub async fn sftp_copy_between_sessions(
     .map_err(|e| e.to_string())?
 }
 
+#[tauri::command]
+pub async fn sftp_read_remote_history_paged(
+    app: AppHandle,
+    terminal_id: String,
+    offset: u32,
+    limit: u32,
+    state: State<'_, SshConnections>,
+) -> Result<Vec<String>, String> {
+    let live_arc = {
+        let connections = state.0.lock().unwrap();
+        connections.get(&terminal_id).cloned()
+    };
+    let Some(live_arc) = live_arc else {
+        return Err("No hay sesión SSH para esta terminal".to_string());
+    };
+
+    let script = format!(
+        r#"offset={}
+limit={}
+file=""
+if [ -f ~/.zsh_history ]; then
+    file=~/.zsh_history
+elif [ -f ~/.bash_history ]; then
+    file=~/.bash_history
+fi
+
+if [ -n "$file" ]; then
+    total_lines=$(wc -l < "$file")
+    if [ $offset -lt $total_lines ]; then
+        read_count=$limit
+        if [ $(( offset + limit )) -gt $total_lines ]; then
+            read_count=$(( total_lines - offset ))
+        fi
+        tail -n $(( offset + read_count )) "$file" | head -n $read_count
+    fi
+else
+    echo "ERROR: No history file found" >&2
+    exit 1
+fi"#,
+        offset, limit
+    );
+
+    let outcome = exec_remote_command_blocking(
+        &app,
+        &terminal_id,
+        &live_arc,
+        &script,
+        std::time::Duration::from_secs(10),
+    )?;
+
+    if outcome.exit_code != 0 {
+        return Err(outcome.stderr);
+    }
+
+    let lines: Vec<String> = outcome.stdout.lines().map(|s| s.to_string()).collect();
+    Ok(lines)
+}
+
