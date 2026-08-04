@@ -175,6 +175,7 @@ let scpClipboard: {
   path: string;
   name: string;
 } | null = null;
+let statusDismissTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Terminal layout elements
 let mainDisplayArea: HTMLElement | null = null;
@@ -498,15 +499,26 @@ function parentRemotePath(path: string): string | null {
 
 function setExplorerStatus(message: string, isError = false) {
   if (!filesStatus) return;
+  if (statusDismissTimer) {
+    clearTimeout(statusDismissTimer);
+    statusDismissTimer = null;
+  }
   if (!message) {
-    filesStatus.style.display = "none";
+    filesStatus.classList.remove("is-visible", "error");
     filesStatus.textContent = "";
-    filesStatus.classList.remove("error");
+    filesStatus.setAttribute("title", "");
     return;
   }
-  filesStatus.style.display = "block";
   filesStatus.textContent = message;
+  filesStatus.setAttribute("title", message);
   filesStatus.classList.toggle("error", isError);
+  filesStatus.classList.add("is-visible");
+  if (!isError) {
+    statusDismissTimer = setTimeout(() => {
+      filesStatus!.classList.remove("is-visible");
+      statusDismissTimer = null;
+    }, 3000);
+  }
 }
 
 function updateUpButton() {
@@ -520,7 +532,7 @@ function showExplorerEmpty(message: string) {
     filesEmpty.textContent = message;
   }
   if (filesToolbar) filesToolbar.style.display = "none";
-  if (filesStatus) filesStatus.style.display = "none";
+  setExplorerStatus("");
   if (filesTree) {
     filesTree.style.display = "none";
     filesTree.innerHTML = "";
