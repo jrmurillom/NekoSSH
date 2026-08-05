@@ -37,6 +37,9 @@ dist-ssr
 
 # Local / scratch (no subir)
 rules.md
+zenit-spec-driven.bat
+zenit-spec-driven.sh
+zenit-spec-driven.*
 .env
 .env.*
 !.env.example
