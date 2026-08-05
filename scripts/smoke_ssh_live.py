@@ -11,7 +11,7 @@ import sqlite3
 import sys
 import time
 
-DB = r"C:\Users\Roberto\AppData\Roaming\com.roberto.app\nekossh.db"
+DB = r"C:\Users\Roberto\AppData\Roaming\com.nekossh.app\nekossh.db"
 
 
 def load_profile(profile_id: int | None):

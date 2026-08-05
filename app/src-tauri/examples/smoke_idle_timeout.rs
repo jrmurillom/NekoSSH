@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 fn creds() -> (String, u16, String, String) {
     let appdata = std::env::var("APPDATA").unwrap();
-    let db = format!(r"{appdata}\com.roberto.app\nekossh.db");
+    let db = format!(r"{appdata}\com.nekossh.app\nekossh.db");
     let conn = Connection::open(db).unwrap();
     conn.query_row(
         "SELECT p.host, p.port, p.username, c.password FROM profiles p

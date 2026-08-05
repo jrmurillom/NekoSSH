@@ -1,6 +1,6 @@
 //! Smoke live con ssh2 (mismo stack que NekoSSH).
 //! Uso: cargo run --example smoke_pty_sftp --manifest-path app/src-tauri/Cargo.toml
-//! Lee perfil id=1 de %APPDATA%/com.roberto.app/nekossh.db (no imprime secretos).
+//! Lee perfil id=1 de %APPDATA%/com.nekossh.app/nekossh.db (no imprime secretos).
 
 use rusqlite::Connection;
 use ssh2::Session;
@@ -12,7 +12,7 @@ use std::time::Duration;
 
 fn appdata_db() -> String {
     let appdata = std::env::var("APPDATA").expect("APPDATA");
-    format!(r"{appdata}\com.roberto.app\nekossh.db")
+    format!(r"{appdata}\com.nekossh.app\nekossh.db")
 }
 
 struct Creds {

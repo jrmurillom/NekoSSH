@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 fn creds() -> (String, u16, String, String) {
     let db = format!(
-        r"{}\com.roberto.app\nekossh.db",
+        r"{}\com.nekossh.app\nekossh.db",
         std::env::var("APPDATA").unwrap()
     );
     let c = Connection::open(db).unwrap();

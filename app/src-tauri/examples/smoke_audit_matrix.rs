@@ -3,7 +3,7 @@
 //!   cargo run --example smoke_audit_matrix
 //!   cargo run --example smoke_audit_matrix -- --bad-timeouts   # debe FALLAR idle
 //!
-//! No imprime secretos. Perfil id=1 en %APPDATA%/com.roberto.app/nekossh.db
+//! No imprime secretos. Perfil id=1 en %APPDATA%/com.nekossh.app/nekossh.db
 
 use rusqlite::Connection;
 use ssh2::{MethodType, Session};
@@ -23,7 +23,7 @@ struct Creds {
 
 fn load_creds() -> Creds {
     let appdata = std::env::var("APPDATA").expect("APPDATA");
-    let db = format!(r"{appdata}\com.roberto.app\nekossh.db");
+    let db = format!(r"{appdata}\com.nekossh.app\nekossh.db");
     let conn = Connection::open(db).expect("open db");
     conn.query_row(
         "SELECT p.host, p.port, p.username, c.password

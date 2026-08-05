@@ -199,12 +199,80 @@ fn default_folder_id(conn: &Connection) -> Result<i64, String> {
 }
 
 pub(crate) fn get_db_conn(app: &AppHandle) -> Result<Connection, String> {
+    migrate_legacy_bundle_data(app)?;
     let app_config_dir = app.path().app_config_dir().map_err(|e| e.to_string())?;
     std::fs::create_dir_all(&app_config_dir).map_err(|e| e.to_string())?;
     let db_path = app_config_dir.join("nekossh.db");
     let conn = Connection::open(db_path).map_err(|e| e.to_string())?;
     init_schema(&conn)?;
     Ok(conn)
+}
+
+/// Bundle id legacy (`com.roberto.app`) → `com.nekossh.app`.
+/// Copia `nekossh.db` (+ wal/shm) y `edit-sessions` si el destino aún no existe.
+fn migrate_legacy_bundle_data(app: &AppHandle) -> Result<(), String> {
+    const LEGACY_ID: &str = "com.roberto.app";
+
+    let new_config = app.path().app_config_dir().map_err(|e| e.to_string())?;
+    let Some(roaming_parent) = new_config.parent() else {
+        return Ok(());
+    };
+    let legacy_config = roaming_parent.join(LEGACY_ID);
+    if !legacy_config.exists() {
+        return Ok(());
+    }
+
+    std::fs::create_dir_all(&new_config).map_err(|e| e.to_string())?;
+
+    let new_db = new_config.join("nekossh.db");
+    if !new_db.exists() {
+        let legacy_db = legacy_config.join("nekossh.db");
+        if legacy_db.exists() {
+            std::fs::copy(&legacy_db, &new_db).map_err(|e| {
+                format!(
+                    "Error al migrar BD de {} a {}: {}",
+                    legacy_db.display(),
+                    new_db.display(),
+                    e
+                )
+            })?;
+            for suffix in ["-wal", "-shm"] {
+                let src = legacy_config.join(format!("nekossh.db{suffix}"));
+                if src.exists() {
+                    let dst = new_config.join(format!("nekossh.db{suffix}"));
+                    let _ = std::fs::copy(&src, &dst);
+                }
+            }
+        }
+    }
+
+    // Temps de edición externa viven en app_data_dir (misma carpeta Roaming en Windows).
+    if let Ok(new_data) = app.path().app_data_dir() {
+        let legacy_data = roaming_parent.join(LEGACY_ID);
+        let legacy_sessions = legacy_data.join("edit-sessions");
+        let new_sessions = new_data.join("edit-sessions");
+        if legacy_sessions.is_dir() && !new_sessions.exists() {
+            let _ = std::fs::create_dir_all(&new_data);
+            let _ = copy_dir_recursive(&legacy_sessions, &new_sessions);
+        }
+    }
+
+    Ok(())
+}
+
+fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> Result<(), String> {
+    std::fs::create_dir_all(dst).map_err(|e| e.to_string())?;
+    for entry in std::fs::read_dir(src).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let ty = entry.file_type().map_err(|e| e.to_string())?;
+        let to = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_recursive(&entry.path(), &to)?;
+        } else {
+            std::fs::copy(entry.path(), to).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(())
 }
 
 fn list_folders_from_db(conn: &Connection) -> Result<Vec<ConnectionFolder>, String> {
@@ -1264,6 +1332,10 @@ pub fn run() {
                 .build(),
         )
         .setup(|app| {
+            migrate_legacy_bundle_data(app.handle()).map_err(|e| {
+                eprintln!("[migrate] {e}");
+                e
+            })?;
             sweep_orphans_on_startup(&app.handle());
             Ok(())
         })
