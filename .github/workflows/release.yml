@@ -1,7 +1,9 @@
-# Build NekoSSH for Windows, macOS, and Linux; upload installers to a draft GitHub Release.
+# Build NekoSSH for Windows; upload installer to a draft GitHub Release.
 # Docs: https://v2.tauri.app/distribute/pipelines/github/
 #
 # Layout: código Tauri en `app/` (no en la raíz del repo).
+#
+# Por ahora solo Windows. macOS/Linux se pueden reactivar en el matrix cuando haga falta.
 #
 # How to run:
 # 1. Bump version in app/package.json, app/src-tauri/Cargo.toml, and app/src-tauri/tauri.conf.json
@@ -11,10 +13,6 @@
 # 3. Review the draft release and publish it when ready.
 #
 # Repo setting (once): Settings → Actions → General → Workflow permissions → Read and write.
-#
-# Note: macOS Intel must run on an Intel runner (macos-13). Cross-compiling
-# x86_64 from macos-latest (ARM) fails because ssh2/openssl-sys cannot find
-# a matching OpenSSL for the target.
 
 name: Release
 
@@ -28,40 +26,10 @@ jobs:
   publish-tauri:
     permissions:
       contents: write
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: macos-latest
-            target: aarch64-apple-darwin
-            args: --target aarch64-apple-darwin
-          # Native Intel build — do not cross-compile from ARM (OpenSSL breaks).
-          - platform: macos-13
-            target: x86_64-apple-darwin
-            args: --target x86_64-apple-darwin
-          - platform: ubuntu-22.04
-            target: ''
-            args: ''
-          - platform: windows-latest
-            target: ''
-            args: ''
-
-    runs-on: ${{ matrix.platform }}
+    runs-on: windows-latest
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Install Linux dependencies
-        if: matrix.platform == 'ubuntu-22.04'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            libwebkit2gtk-4.1-dev \
-            libappindicator3-dev \
-            librsvg2-dev \
-            patchelf \
-            libssl-dev
 
       - name: Setup Node
         uses: actions/setup-node@v4
@@ -72,8 +40,6 @@ jobs:
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
@@ -95,7 +61,6 @@ jobs:
           releaseBody: |
             Cliente SSH de escritorio (Cyber-Sakura).
 
-            Descarga el instalador de tu plataforma en los assets de abajo.
+            Instalador Windows en los assets de abajo.
           releaseDraft: true
           prerelease: false
-          args: ${{ matrix.args }}
