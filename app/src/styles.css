@@ -806,6 +806,21 @@ body {
   min-width: 0;
 }
 
+.input-browse-row .key-status {
+  flex: 1;
+  min-width: 0;
+  font-size: 0.85rem;
+  color: var(--color-text-muted, #9aa4b2);
+  padding: 6px 10px;
+  border: 1px solid rgba(var(--color-accent-primary-rgb), 0.2);
+  border-radius: var(--border-radius-sm, 6px);
+  background: rgba(0, 0, 0, 0.2);
+}
+
+.input-browse-row .key-status.is-configured {
+  color: var(--color-accent-light, #ffb6c1);
+}
+
 .btn-icon-action {
   display: inline-flex;
   align-items: center;

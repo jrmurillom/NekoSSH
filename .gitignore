@@ -23,7 +23,7 @@ dist-ssr
 *.sln
 *.sw?
 
-# Agent files and caches
+# Agent local dirs (symlinks / caches — no versionar)
 .gemini/
 .claude/
 .cursor/
@@ -35,4 +35,23 @@ dist-ssr
 *.db-shm
 *.db-wal
 
+# Local / scratch (no subir)
+rules.md
+.env
+.env.*
+!.env.example
 
+# Capturas y basura suelta en raíz
+/*.jpg
+/*.jpeg
+/*.png
+/*.webp
+/*.gif
+/*-??????-????-????-????-????????????.jpg
+
+# OS / temp
+Thumbs.db
+Desktop.ini
+*.tmp
+*.temp
+*~

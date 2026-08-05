@@ -1,75 +1,76 @@
-# NekoSSH
+<p align="center">
+  <img src="docs/design/logo3.png" alt="NekoSSH" width="180" />
+</p>
 
-Cliente SSH de escritorio con estética **Cyber-Sakura**: carpetas y conexiones locales, terminal interactiva, explorador SFTP y backend nativo en Rust (Tauri v2).
+<h1 align="center">NekoSSH</h1>
+
+<p align="center">
+  Una terminal SSH simple, con estética anime.<br />
+</p>
+
+---
+
+## Qué es
+
+Cliente SSH de escritorio (Tauri) para conectar, ver y trabajar en el remoto sin la vibra aburrida de siempre.
+
+- Edición de archivos en remoto (sync con tu editor)
+- Snippets a un toque
+- Historial de comandos a mano
+- Varias pestañas de terminal
+- Temas anime y fondo a tu gusto
+
+Una sesión por pestaña. Archivos SFTP en la misma conexión.
+
+---
+
+## Stack
+
+| Capa | Tecnología |
+|------|------------|
+| Shell de escritorio | **Tauri v2** |
+| Backend | **Rust** (`ssh2`, SQLite / `rusqlite`) |
+| Frontend | **TypeScript**, Vite, HTML/CSS (tokens de diseño) |
+| Terminal | **xterm.js** + Fit addon |
+| UI chrome | **Lucide** (outline) |
+
+Código de la app en `app/` (frontend + `src-tauri`).
+
+---
 
 ## Requisitos
 
 - [Node.js](https://nodejs.org/) 20+
-- [Rust](https://rustup.rs/) (stable) + toolchain del host
-- En Windows: WebView2 (suele venir con Windows 10/11)
+- [Rust](https://rustup.rs/) stable
+- Windows: WebView2 (incluido en 10/11 recientes)
 
-## Estructura
+---
 
-| Ruta | Contenido |
-|------|-----------|
-| `app/` | Código de la aplicación (frontend + `src-tauri`) |
-| `docs/` | SSOT técnicos y flujo de trabajo |
-| `openspec/` | Changes y specs |
-
-## Instalación
-
-```bash
-cd app
-npm install
-```
-
-Dependencias relevantes del frontend:
-
-- `@xterm/xterm` + `@xterm/addon-fit` — emulador de terminal
-- `@tauri-apps/api` / plugins — bridge con el runtime
-- `lucide` — iconos de contorno (chrome UI; color vía tema / `currentColor`)
-
-Dependencias relevantes del backend (`app/src-tauri`):
-
-- `ssh2` — una Session SSH por terminal (PTY + SFTP por canales; sin 2º login)
-- `rusqlite` (bundled) — CRUD de carpetas (`connection_folders`) y conexiones (`profiles` + `folder_id`) en SQLite local
-- Sidebar **Servidores**: árbol carpetas → conexiones; icono carpeta para agregar grupo; rename inline (Enter/Escape)
-- `tauri-plugin-sql` — migraciones / SQL plugin
-
-Tras conectar un perfil, la pestaña **Archivos** lista el filesystem remoto (**SFTP** en la misma conexión, canal aparte). Navegación con iconos Lucide: expandir/colapsar, abrir carpeta, Subir, Ir, Actualizar. Clic derecho → **Abrir en Terminal**. El árbol no sigue automáticamente el `cd` tipado.
-
-Cerrar una pestaña (o “cerrar todas”) libera la Session SSH de ese terminal. Cerrar la ventana de NekoSSH cierra **todas** las Sessions activas.
-## Desarrollo
+## Comandos
 
 Desde `app/`:
 
 ```bash
-npm run tauri dev
+npm install
+npm run tauri dev      # desarrollo
+npm run tauri build    # instalable / release
+npm run test           # tests frontend (Vitest)
 ```
 
-Solo frontend (Vite):
-
-```bash
-npm run dev
-```
-
-## Pruebas
+Tests Rust:
 
 ```bash
 cargo test --manifest-path app/src-tauri/Cargo.toml
 ```
 
-## Build de producción
+Solo Vite (sin shell nativo):
 
 ```bash
-cd app
-npm run tauri build
+cd app && npm run dev
 ```
 
-## Documentación
+---
 
-- Alcance: `docs/project_scope.md`
-- Estándares: `docs/base-standards.md`
-- Diseño visual: `docs/design/DESIGN.md`
-- Layout: `docs/design/ui-layout-contract.md`
-- Ciclo OpenSpec: `docs/workflow-ciclo-end-to-end.md`
+<p align="center">
+  <sub>NekoSSH — SSH con onda anime, sin perder el ritmo.</sub>
+</p>

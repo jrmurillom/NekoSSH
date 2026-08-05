@@ -29,7 +29,7 @@ Este documento define el alcance, stack tecnológico y las fases de desarrollo p
 * **CRUD de Perfiles de Conexión**:
   - Almacenamiento local SQLite de servidores con las siguientes propiedades configurables:
     - Nombre del perfil, grupo/carpeta, Host (IP o dominio), Puerto (default 22), Usuario.
-    - Método de autenticación: Contraseña o llave privada (archivos `.pem`, `.key`, `.ppk`, etc., o pegado directo) junto a frase de paso (passphrase).
+    - Método de autenticación: Contraseña o llave privada (contenido del archivo `.pem`/OpenSSH leído al seleccionar, persistido en el perfil; no se depende de rutas de SO) junto a frase de paso (passphrase).
     - Intervalo de Keepalive.
     - Configuración de túneles SSH (Local y Dinámico/SOCKS Proxy).
 * **Motor SSH**:

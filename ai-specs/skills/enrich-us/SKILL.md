@@ -24,7 +24,7 @@ Use **before** `/opsx:propose` when work starts from ZenTao.
 
 ## Prerequisites
 
-- ZenTao REST API v1 (tasks) + optional MCP `@tytt` (stories/context). See `docs/zentao-integration.md`.
+- ZenTao REST API v1 (tasks) + optional MCP `@tytt` (stories/context).
 - Read `docs/` internally to **inform** acceptance criteria — do not copy technical specs into ZenTao.
 
 ## Arguments

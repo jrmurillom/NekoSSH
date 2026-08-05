@@ -102,8 +102,8 @@ Eliminar un snippet o una categoría SHALL requerir confirmación mediante el di
 - **WHEN** el dialog A1 de eliminación está abierto y el usuario pulsa Escape o Cancelar
 - **THEN** no se elimina el recurso
 
-### Requirement: Presentación alineada al preview Cyber-Sakura
-El modal de snippets MUST alinearse visualmente a `docs/design/preview-snippets-modal.html` y a los tokens del modal de perfil: campo de búsqueda y control “+ Snippet” con chrome temático (no controles nativos/desconectados). La lista MUST separar filas de forma visible. Cada fila MUST mostrar título y cuerpo/comando **sin** repetir el nombre de la categoría. Crear categoría MUST usar un panel/form **dentro del mismo modal**; el producto NO MUST usar `window.prompt` ni un diálogo del SO para ese alta.
+### Requirement: Presentación alineada al tema Cyber-Sakura
+El modal de snippets MUST alinearse visualmente a los tokens del modal de perfil (`DESIGN.md`): campo de búsqueda y control “+ Snippet” con chrome temático (no controles nativos/desconectados). La lista MUST separar filas de forma visible. Cada fila MUST mostrar título y cuerpo/comando **sin** repetir el nombre de la categoría. Crear categoría MUST usar un panel/form **dentro del mismo modal**; el producto NO MUST usar `window.prompt` ni un diálogo del SO para ese alta.
 
 #### Scenario: Controles temáticos
 - **WHEN** el usuario ve el toolbar del gestor

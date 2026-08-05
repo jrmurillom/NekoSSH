@@ -8,7 +8,7 @@ alwaysApply: false
 Fuente de verdad de **estilo**: colores, tipografía, efectos y apariencia de componentes.  
 La **estructura de páginas y zonas** vive en `ui-layout-contract.md` — no mezclar roles.
 
-**Referencia de aceptación (sin glow):** `docs/design/preview-no-glow.html` (modo Sin glow).
+Aceptación visual: acentos planos **sin glow** (tokens `--glow-*` en 0 / no usar sombras neón).
 
 ---
 
@@ -136,7 +136,7 @@ Definidos en `:root` y redefinidos en cada bloque `[data-theme="<id>"]`.
 
 ### Confirmaciones (dialog)
 
-Patrón canónico: **dialog glass centrado** (referencia de preview: A1 en `docs/design/preview-overlays.html`).
+Patrón canónico: **dialog glass centrado**.
 
 - Overlay oscuro semitransparente; panel centrado con `background: var(--bg-dark-card)`, `backdrop-filter: var(--glass-blur)`, `border: var(--glass-border)`, `box-shadow: var(--glass-shadow)` (profundidad, **sin glow**).
 - Estructura: título → cuerpo corto → impacto opcional en mono (p. ej. nombre de carpeta + conteo) → acciones alineadas a la derecha.
@@ -148,7 +148,7 @@ Patrón canónico: **dialog glass centrado** (referencia de preview: A1 en `docs
 
 ### Menús contextuales
 
-Patrón canónico: **ítems con glifo/icono Lucide** (referencia de preview: B3 en `docs/design/preview-overlays.html`), reutilizable en sidebar y explorador.
+Patrón canónico: **ítems con glifo/icono Lucide**, reutilizable en sidebar y explorador.
 
 - Contenedor glass: mismos tokens de card que el dialog (`--bg-dark-card`, `--glass-border`, `--glass-shadow`, radius `--border-radius-md`).
 - Cada ítem: icono outline a la izquierda + label; padding compacto; sin pills ni multi-shadow.

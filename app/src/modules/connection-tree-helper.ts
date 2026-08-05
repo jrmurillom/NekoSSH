@@ -17,7 +17,7 @@ export interface ConnectionProfile {
   username: string;
   auth_type: "password" | "key";
   password?: string;
-  key_path?: string;
+  private_key?: string;
   passphrase?: string;
   keepalive: number;
   tunnel_type: "none" | "local" | "dynamic";

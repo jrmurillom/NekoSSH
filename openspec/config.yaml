@@ -3,7 +3,7 @@ schema: spec-driven
 context: |
   Proyecto: NekoSSH — Cliente SSH moderno y editor remoto visual con estética Cyberpunk-Anime.
   Stack: Tauri v2 (Rust en backend, SQLite local, ssh2/russh), Frontend (TypeScript, Vite, HTML/CSS Vanilla con Tokens de Diseño), Emulación de Terminal (xterm.js + tauri), Editor Monaco integrado.
-  Issue tracker: ZenTao — ver docs/zentao-integration.md
+  Issue tracker: ZenTao (intención de negocio; no SSOT técnico).
   ZenTao: solo planeación (alcance, criterios). Lo técnico en docs/ y OpenSpec.
   Prefijos git: task-<id>
   Idioma: español latino para documentación, artefactos OpenSpec, commits y tests humanos.
@@ -16,7 +16,6 @@ context: |
   - docs/design/ui-layout-contract.md — shell, zonas, patrones de página
   - docs/design-system.md — índice (puntero; no editar verdad ahí)
   - docs/documentation-standards.md — mantenimiento de docs
-  - docs/workflow-ciclo-end-to-end.md — ciclo ZenTao → opsx → archive
   - docs/openspec-tasks-mandatory-steps.md — pasos obligatorios por superficie
 
 rules:

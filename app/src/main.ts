@@ -174,7 +174,8 @@ interface ConnectionProfile {
   username: string;
   auth_type: 'password' | 'key';
   password?: string;
-  key_path?: string;
+  /** Contenido PEM de la llave (no ruta). */
+  private_key?: string;
   passphrase?: string;
   keepalive: number;
   tunnel_type: 'none' | 'local' | 'dynamic';
@@ -264,7 +265,7 @@ let profPortInput: HTMLInputElement | null = null;
 let profUsernameInput: HTMLInputElement | null = null;
 let profAuthTypeSelect: HTMLSelectElement | null = null;
 let profPasswordInput: HTMLInputElement | null = null;
-let profKeyPathInput: HTMLInputElement | null = null;
+let profKeyStatusEl: HTMLElement | null = null;
 let profPassphraseInput: HTMLInputElement | null = null;
 let profKeepaliveInput: HTMLInputElement | null = null;
 
@@ -277,6 +278,11 @@ let btnNewFolder: HTMLButtonElement | null = null;
 let btnCancelProfile: HTMLButtonElement | null = null;
 let profileListContainer: HTMLElement | null = null;
 let profileFolderIdInput: HTMLInputElement | null = null;
+
+/** PEM seleccionado en el formulario (no se muestra en UI). */
+let draftPrivateKeyContent: string | null = null;
+/** Material ya persistido al abrir el modal de edición. */
+let existingPrivateKeyContent: string | null = null;
 
 // Tabs sidebar
 let tabBtnServers: HTMLButtonElement | null = null;
@@ -1223,7 +1229,7 @@ window.addEventListener("DOMContentLoaded", () => {
   profUsernameInput = document.getElementById("prof-username") as HTMLInputElement;
   profAuthTypeSelect = document.getElementById("prof-auth-type") as HTMLSelectElement;
   profPasswordInput = document.getElementById("prof-password") as HTMLInputElement;
-  profKeyPathInput = document.getElementById("prof-key-path") as HTMLInputElement;
+  profKeyStatusEl = document.getElementById("prof-key-status");
   profPassphraseInput = document.getElementById("prof-passphrase") as HTMLInputElement;
   profKeepaliveInput = document.getElementById("prof-keepalive") as HTMLInputElement;
 
@@ -1271,7 +1277,7 @@ window.addEventListener("DOMContentLoaded", () => {
     toggleTunnelFields(target.value);
   });
 
-  // Selector nativo de archivo de llave privada
+  // Selector nativo de archivo de llave privada (lee contenido, no ruta)
   const btnBrowseKey = document.getElementById("btn-browse-key") as HTMLButtonElement | null;
   const fileInputKey = document.getElementById("file-input-key") as HTMLInputElement | null;
 
@@ -1280,13 +1286,29 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   fileInputKey?.addEventListener("change", () => {
-    if (fileInputKey.files && fileInputKey.files.length > 0) {
-      const selectedFile = fileInputKey.files[0] as File & { path?: string };
-      const fullPath = selectedFile.path || selectedFile.name;
-      if (profKeyPathInput) {
-        profKeyPathInput.value = fullPath;
+    if (!fileInputKey.files || fileInputKey.files.length === 0) return;
+    const selectedFile = fileInputKey.files[0];
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = typeof reader.result === "string" ? reader.result : "";
+      if (!text.trim()) {
+        void alertDialog({
+          title: "Llave inválida",
+          message: "No se pudo leer el contenido de la llave privada seleccionada.",
+        });
+        return;
       }
-    }
+      draftPrivateKeyContent = text;
+      updateKeyStatusUi(true);
+    };
+    reader.onerror = () => {
+      void alertDialog({
+        title: "Error",
+        message: "Error al leer el archivo de llave privada.",
+      });
+    };
+    reader.readAsText(selectedFile);
+    fileInputKey.value = "";
   });
 
   // Submit del formulario
@@ -1425,10 +1447,23 @@ function setupSshEventListeners() {
 }
 
 // --- Modal Helper Functions ---
+function updateKeyStatusUi(configured: boolean) {
+  if (!profKeyStatusEl) return;
+  if (configured) {
+    profKeyStatusEl.textContent = "Llave privada configurada";
+    profKeyStatusEl.classList.add("is-configured");
+  } else {
+    profKeyStatusEl.textContent = "Sin llave configurada";
+    profKeyStatusEl.classList.remove("is-configured");
+  }
+}
+
 function openProfileModal(profile?: ConnectionProfile, folderId?: number) {
   if (!profileModal || !profileForm || !modalTitle) return;
 
   profileForm.reset();
+  draftPrivateKeyContent = null;
+  existingPrivateKeyContent = null;
 
   if (profile) {
     modalTitle.textContent = "Editar conexión";
@@ -1442,7 +1477,8 @@ function openProfileModal(profile?: ConnectionProfile, folderId?: number) {
     if (profUsernameInput) profUsernameInput.value = profile.username;
     if (profAuthTypeSelect) profAuthTypeSelect.value = profile.auth_type;
     if (profPasswordInput) profPasswordInput.value = profile.password || "";
-    if (profKeyPathInput) profKeyPathInput.value = profile.key_path || "";
+    existingPrivateKeyContent = profile.private_key?.trim() ? profile.private_key : null;
+    updateKeyStatusUi(!!existingPrivateKeyContent);
     if (profPassphraseInput) profPassphraseInput.value = profile.passphrase || "";
     if (profKeepaliveInput) profKeepaliveInput.value = profile.keepalive.toString();
     
@@ -1463,6 +1499,7 @@ function openProfileModal(profile?: ConnectionProfile, folderId?: number) {
     if (profileFolderIdInput) {
       profileFolderIdInput.value = targetFolder?.toString() || "";
     }
+    updateKeyStatusUi(false);
     toggleAuthFields('password');
     toggleTunnelFields('none');
   }
@@ -1472,6 +1509,8 @@ function openProfileModal(profile?: ConnectionProfile, folderId?: number) {
 
 function closeProfileModal() {
   profileModal?.classList.remove("active");
+  draftPrivateKeyContent = null;
+  existingPrivateKeyContent = null;
 }
 
 function toggleAuthFields(authType: 'password' | 'key') {
@@ -1481,11 +1520,9 @@ function toggleAuthFields(authType: 'password' | 'key') {
   if (authType === 'password') {
     if (pwdGroup) pwdGroup.style.display = "flex";
     if (keyGroup) keyGroup.style.display = "none";
-    if (profKeyPathInput) profKeyPathInput.required = false;
   } else {
     if (pwdGroup) pwdGroup.style.display = "none";
     if (keyGroup) keyGroup.style.display = "flex";
-    if (profKeyPathInput) profKeyPathInput.required = true;
   }
 }
 
@@ -1574,7 +1611,15 @@ async function saveProfile() {
   if (profile.auth_type === 'password') {
     profile.password = profPasswordInput?.value || "";
   } else {
-    profile.key_path = profKeyPathInput?.value || "";
+    const keyMaterial = draftPrivateKeyContent ?? existingPrivateKeyContent;
+    if (!keyMaterial?.trim()) {
+      void alertDialog({
+        title: "Llave requerida",
+        message: "Selecciona un archivo de llave privada con Examinar... antes de guardar.",
+      });
+      return;
+    }
+    profile.private_key = keyMaterial;
     profile.passphrase = profPassphraseInput?.value || "";
   }
 
@@ -2199,7 +2244,7 @@ async function invokeStartSshSession(terminalId: string, profile: ConnectionProf
     username: profile.username,
     authType: profile.auth_type,
     password: profile.password || null,
-    keyPath: profile.key_path || null,
+    privateKey: profile.private_key || null,
     passphrase: profile.passphrase || null,
     keepalive: profile.keepalive || 60,
   });

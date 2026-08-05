@@ -46,7 +46,7 @@ No aplicar “English only” a documentación ni a artefactos OpenSpec. Esa reg
 
 **Regla:** ZenTao no es SSOT técnico (sin rutas, stack ni paths). Conflictos técnicos → `docs/` + `openspec/config.yaml`.
 
-Ciclo de trabajo: `docs/workflow-ciclo-end-to-end.md`.  
+Ciclo de trabajo: OpenSpec (`/opsx:propose` → `/opsx:apply` → commit → `/opsx:archive`).  
 Pasos obligatorios en `tasks.md`: `docs/openspec-tasks-mandatory-steps.md`.
 
 ---
@@ -62,7 +62,6 @@ Leer solo los que apliquen al cambio:
 | Diseño visual | `docs/design/DESIGN.md` |
 | Layout UI | `docs/design/ui-layout-contract.md` |
 | Documentación | `docs/documentation-standards.md` |
-| ZenTao | `docs/zentao-integration.md` |
 
 Si falta un estándar (p. ej. backend HTTP clásico), no inventar uno paralelo: documentar decisiones en el `design.md` del change y, si se vuelven permanentes, promoverlas a `docs/`.
 

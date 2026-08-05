@@ -56,7 +56,7 @@ pub struct ConnectionFolder {
     sort_order: i32,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ConnectionProfile {
     id: Option<i64>,
     folder_id: Option<i64>,
@@ -66,7 +66,8 @@ pub struct ConnectionProfile {
     username: String,
     auth_type: String, // "password" or "key"
     password: Option<String>,
-    key_path: Option<String>,
+    /// Contenido PEM/texto de la llave privada (no ruta de archivo).
+    private_key: Option<String>,
     passphrase: Option<String>,
     keepalive: u32,
     tunnel_type: String, // "none", "local", "dynamic"
@@ -92,9 +93,47 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     conn.execute_batch(include_str!("../migrations/001_initial_schema.sql"))
         .map_err(|e| format!("Error al inicializar base de datos: {}", e))?;
+    ensure_auth_private_key_column(conn)?;
     ensure_connection_folders_schema(conn)?;
     ensure_app_preferences_schema(conn)?;
     snippets::ensure_snippets_schema(conn)?;
+    Ok(())
+}
+
+/// Idempotent: renombra `key_path` → `private_key` en DBs existentes / tests con 001.
+fn ensure_auth_private_key_column(conn: &Connection) -> Result<(), String> {
+    let mut stmt = conn
+        .prepare("PRAGMA table_info(auth_credentials)")
+        .map_err(|e| e.to_string())?;
+    let cols = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| e.to_string())?;
+    let mut has_key_path = false;
+    let mut has_private_key = false;
+    for col in cols {
+        let name = col.map_err(|e| e.to_string())?;
+        if name == "key_path" {
+            has_key_path = true;
+        }
+        if name == "private_key" {
+            has_private_key = true;
+        }
+    }
+
+    if has_key_path && !has_private_key {
+        conn.execute(
+            "ALTER TABLE auth_credentials RENAME COLUMN key_path TO private_key",
+            [],
+        )
+        .map_err(|e| format!("Error al renombrar key_path a private_key: {}", e))?;
+    } else if !has_private_key {
+        conn.execute(
+            "ALTER TABLE auth_credentials ADD COLUMN private_key TEXT",
+            [],
+        )
+        .map_err(|e| format!("Error al añadir private_key: {}", e))?;
+    }
+
     Ok(())
 }
 
@@ -244,7 +283,7 @@ fn list_profiles_from_db(conn: &Connection) -> Result<Vec<ConnectionProfile>, St
     let mut stmt = conn
         .prepare(
             "SELECT p.id, p.folder_id, p.name, p.host, p.port, p.username, p.keepalive, 
-                    c.auth_type, c.password, c.key_path, c.passphrase,
+                    c.auth_type, c.password, c.private_key, c.passphrase,
                     t.tunnel_type, t.local_port, t.dest
              FROM profiles p
              LEFT JOIN auth_credentials c ON p.id = c.profile_id
@@ -265,7 +304,7 @@ fn list_profiles_from_db(conn: &Connection) -> Result<Vec<ConnectionProfile>, St
                 keepalive: row.get(6)?,
                 auth_type: row.get(7).unwrap_or_else(|_| "password".to_string()),
                 password: row.get(8)?,
-                key_path: row.get(9)?,
+                private_key: row.get(9)?,
                 passphrase: row.get(10)?,
                 tunnel_type: row.get(11).unwrap_or_else(|_| "none".to_string()),
                 tunnel_local_port: row.get(12)?,
@@ -320,13 +359,13 @@ fn create_profile_in_db(conn: &mut Connection, profile: &ConnectionProfile) -> R
     let profile_id = tx.last_insert_rowid();
 
     tx.execute(
-        "INSERT INTO auth_credentials (profile_id, auth_type, password, key_path, passphrase) 
+        "INSERT INTO auth_credentials (profile_id, auth_type, password, private_key, passphrase) 
          VALUES (?1, ?2, ?3, ?4, ?5)",
         (
             profile_id,
             &profile.auth_type,
             &profile.password,
-            &profile.key_path,
+            &profile.private_key,
             &profile.passphrase,
         ),
     )
@@ -372,13 +411,13 @@ fn update_profile_in_db(conn: &mut Connection, profile: &ConnectionProfile) -> R
     .map_err(|e| e.to_string())?;
 
     tx.execute(
-        "INSERT OR REPLACE INTO auth_credentials (profile_id, auth_type, password, key_path, passphrase) 
+        "INSERT OR REPLACE INTO auth_credentials (profile_id, auth_type, password, private_key, passphrase) 
          VALUES (?1, ?2, ?3, ?4, ?5)",
         (
             profile_id,
             &profile.auth_type,
             &profile.password,
-            &profile.key_path,
+            &profile.private_key,
             &profile.passphrase,
         ),
     )
@@ -478,7 +517,7 @@ fn authenticate_session(
     username: &str,
     auth_type: &str,
     password: Option<&str>,
-    key_path: Option<&str>,
+    private_key: Option<&str>,
     passphrase: Option<&str>,
     keepalive_secs: u32,
 ) -> Result<Session, String> {
@@ -491,7 +530,7 @@ fn authenticate_session(
             username,
             auth_type,
             password,
-            key_path,
+            private_key,
             passphrase,
             keepalive_secs,
         ) {
@@ -516,11 +555,24 @@ fn authenticate_session_once(
     username: &str,
     auth_type: &str,
     password: Option<&str>,
-    key_path: Option<&str>,
+    private_key: Option<&str>,
     passphrase: Option<&str>,
     keepalive_secs: u32,
 ) -> Result<Session, String> {
     use std::net::ToSocketAddrs;
+
+    // Validar material de llave antes de abrir TCP (error claro, sin handshake inútil).
+    let key_material_early: Option<String> = if auth_type != "password" {
+        let material = private_key
+            .map(str::trim)
+            .filter(|s| !s.is_empty())
+            .ok_or_else(|| {
+                "Llave privada no configurada: falta el material en el perfil".to_string()
+            })?;
+        Some(material.to_string())
+    } else {
+        None
+    };
 
     // connect_timeout: NO dejar SO_RCVTIMEO en el socket (eso mataba el PTY con "transport read").
     let addr = (host, port)
@@ -570,9 +622,27 @@ fn authenticate_session_once(
         sess.userauth_password(username, pwd)
             .map_err(|e| format!("Error de autenticación por contraseña: {}", e))?;
     } else {
-        let kp = key_path.ok_or_else(|| "Ruta de llave privada no provista".to_string())?;
-        let key_file = FsPath::new(kp);
-        sess.userauth_pubkey_file(username, None, key_file, passphrase)
+        let key_material = key_material_early
+            .as_deref()
+            .ok_or_else(|| {
+                "Llave privada no configurada: falta el material en el perfil".to_string()
+            })?;
+        // libssh2 en Windows sin OpenSSL no expone userauth_pubkey_memory.
+        // Materializar a temp efímero; la fuente de verdad es BD (private_key).
+        let tmp_path = std::env::temp_dir().join(format!(
+            "nekossh-key-{}.pem",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(&tmp_path, key_material).map_err(|e| {
+            format!(
+                "Error al preparar llave privada temporal ({}): {}",
+                tmp_path.display(),
+                e
+            )
+        })?;
+        let auth_result = sess.userauth_pubkey_file(username, None, &tmp_path, passphrase);
+        let _ = std::fs::remove_file(&tmp_path);
+        auth_result
             .map_err(|e| format!("Error de autenticación por llave privada: {}", e))?;
     }
 
@@ -595,7 +665,7 @@ async fn start_ssh_session(
     username: String,
     auth_type: String,
     password: Option<String>,
-    key_path: Option<String>,
+    private_key: Option<String>,
     passphrase: Option<String>,
     keepalive: Option<u32>,
     state: tauri::State<'_, SshConnections>,
@@ -624,7 +694,7 @@ async fn start_ssh_session(
                 &username,
                 &auth_type,
                 password.as_deref(),
-                key_path.as_deref(),
+                private_key.as_deref(),
                 passphrase.as_deref(),
                 keepalive_secs,
             )?;
@@ -1172,6 +1242,12 @@ pub fn run() {
             sql: include_str!("../migrations/004_snippets.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 5,
+            description: "auth_private_key",
+            sql: include_str!("../migrations/005_auth_private_key.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     let (edit_sessions, edit_watchers) = manage_edit_state();
@@ -1274,7 +1350,7 @@ mod tests {
             username: "neko".to_string(),
             auth_type: "password".to_string(),
             password: Some("secret".to_string()),
-            key_path: None,
+            private_key: None,
             passphrase: None,
             keepalive: 60,
             tunnel_type: "none".to_string(),
@@ -1319,7 +1395,10 @@ mod tests {
         updated.host = "10.0.0.5".to_string();
         updated.auth_type = "key".to_string();
         updated.password = None;
-        updated.key_path = Some("/keys/id_ed25519".to_string());
+        updated.private_key = Some(
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nTEST_KEY_MATERIAL\n-----END OPENSSH PRIVATE KEY-----\n"
+                .to_string(),
+        );
         updated.passphrase = Some("frase".to_string());
         updated.tunnel_type = "dynamic".to_string();
         updated.tunnel_local_port = Some(1080);
@@ -1332,10 +1411,56 @@ mod tests {
         assert_eq!(profiles[0].name, "new-name");
         assert_eq!(profiles[0].host, "10.0.0.5");
         assert_eq!(profiles[0].auth_type, "key");
-        assert_eq!(profiles[0].key_path.as_deref(), Some("/keys/id_ed25519"));
+        assert_eq!(
+            profiles[0].private_key.as_deref(),
+            Some(
+                "-----BEGIN OPENSSH PRIVATE KEY-----\nTEST_KEY_MATERIAL\n-----END OPENSSH PRIVATE KEY-----\n"
+            )
+        );
         assert_eq!(profiles[0].tunnel_type, "dynamic");
         assert_eq!(profiles[0].tunnel_local_port, Some(1080));
         assert_eq!(profiles[0].folder_id, Some(general_id));
+    }
+
+    #[test]
+    fn conserva_private_key_pem_en_round_trip() {
+        let mut conn = open_test_db();
+        let mut profile = sample_profile("key-host");
+        profile.auth_type = "key".to_string();
+        profile.password = None;
+        let pem = "-----BEGIN OPENSSH PRIVATE KEY-----\nABC123\n-----END OPENSSH PRIVATE KEY-----\n";
+        profile.private_key = Some(pem.to_string());
+        let id = create_profile_in_db(&mut conn, &profile).expect("crear");
+
+        let listed = list_profiles_from_db(&conn).expect("listar");
+        assert_eq!(listed[0].id, Some(id));
+        assert_eq!(listed[0].private_key.as_deref(), Some(pem));
+
+        // Actualizar sin tocar la llave debe conservar el PEM
+        let mut updated = listed[0].clone();
+        updated.name = "key-host-renamed".to_string();
+        update_profile_in_db(&mut conn, &updated).expect("actualizar");
+        let after = list_profiles_from_db(&conn).expect("listar");
+        assert_eq!(after[0].name, "key-host-renamed");
+        assert_eq!(after[0].private_key.as_deref(), Some(pem));
+    }
+
+    #[test]
+    fn schema_renombra_key_path_a_private_key() {
+        let conn = Connection::open_in_memory().expect("mem");
+        conn.execute_batch(include_str!("../migrations/001_initial_schema.sql"))
+            .expect("001");
+        ensure_auth_private_key_column(&conn).expect("rename");
+        let mut stmt = conn
+            .prepare("PRAGMA table_info(auth_credentials)")
+            .expect("pragma");
+        let cols: Vec<String> = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .expect("map")
+            .map(|r| r.expect("col"))
+            .collect();
+        assert!(cols.iter().any(|c| c == "private_key"));
+        assert!(!cols.iter().any(|c| c == "key_path"));
     }
 
     #[test]
@@ -1388,11 +1513,51 @@ mod tests {
             [],
         )
         .expect("legacy profile");
+        ensure_auth_private_key_column(&conn).expect("private_key");
         ensure_connection_folders_schema(&conn).expect("folders schema");
         let profiles = list_profiles_from_db(&conn).expect("list");
         assert_eq!(profiles.len(), 1);
         assert_eq!(profiles[0].name, "legacy");
         assert!(profiles[0].folder_id.is_some());
+    }
+
+    #[test]
+    fn rechaza_auth_por_llave_sin_private_key() {
+        let err = match authenticate_session_once(
+            "127.0.0.1",
+            1,
+            "neko",
+            "key",
+            None,
+            None,
+            None,
+            60,
+        ) {
+            Ok(_) => panic!("debe fallar sin material"),
+            Err(e) => e,
+        };
+        assert!(
+            err.contains("Llave privada no configurada"),
+            "mensaje inesperado: {err}"
+        );
+
+        let err_empty = match authenticate_session_once(
+            "127.0.0.1",
+            1,
+            "neko",
+            "key",
+            None,
+            Some("   "),
+            None,
+            60,
+        ) {
+            Ok(_) => panic!("debe fallar con material vacío"),
+            Err(e) => e,
+        };
+        assert!(
+            err_empty.contains("Llave privada no configurada"),
+            "mensaje inesperado: {err_empty}"
+        );
     }
 
     #[test]
