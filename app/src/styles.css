@@ -1156,6 +1156,145 @@ input[type="range"]::-webkit-slider-thumb {
   background-color: transparent !important;
 }
 
+/* --- Cuadrícula de shells del contexto (padre + hasta 3 hijos) --- */
+/* Fondo, opacidad y glow siguen viviendo solo en .terminal-panel: grid y celdas
+   son transparentes y con una celda el render es idéntico al panel de siempre. */
+.term-grid {
+  position: relative;
+  z-index: 2;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  gap: 0;
+  background: transparent;
+  grid-template-columns: 1fr;
+  grid-template-rows: 1fr;
+}
+
+.term-grid.cells-2 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr;
+}
+
+/* 3 celdas en T: padre e hijo1 arriba, hijo2 a ancho completo abajo. */
+.term-grid.cells-3 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.term-grid.cells-3 > .term-cell:nth-child(3) {
+  grid-column: 1 / -1;
+}
+
+.term-grid.cells-4 {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: 1fr 1fr;
+}
+
+.term-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  background: transparent;
+  border: none;
+}
+
+/* Divisores y foco solo en modo cuadrícula: con una celda el panel se ve igual que antes. */
+.term-grid:not(.cells-1) > .term-cell {
+  border: 1px solid rgba(var(--color-accent-primary-rgb), 0.10);
+}
+
+.term-grid:not(.cells-1) > .term-cell.focused {
+  border-color: rgba(var(--color-accent-primary-rgb), 0.35);
+}
+
+.term-cell-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 10px;
+  flex-shrink: 0;
+  font-size: 0.68rem;
+  color: var(--color-text-muted);
+}
+
+.term-grid.cells-1 > .term-cell > .term-cell-header {
+  display: none;
+}
+
+.term-cell-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.term-cell.focused .term-cell-label {
+  color: var(--color-accent-light);
+}
+
+.term-cell-close {
+  background: transparent;
+  border: none;
+  color: var(--color-text-muted);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.term-cell-close:hover {
+  background: rgba(var(--color-error-rgb), 0.2);
+  color: var(--color-error);
+}
+
+/* Con una sola celda el canvas queda idéntico al panel de siempre (sin padding extra). */
+.term-cell .terminal-canvas-container {
+  height: auto;
+  padding: 0;
+}
+
+.term-grid:not(.cells-1) > .term-cell > .terminal-canvas-container {
+  padding: 0 8px 8px 8px;
+}
+
+.terminal-panel-header-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.term-add-shell {
+  background: transparent;
+  border: 1px solid rgba(var(--color-accent-primary-rgb), 0.25);
+  color: var(--color-accent-light);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 6px;
+}
+
+.term-add-shell:hover:not(:disabled) {
+  background: rgba(var(--color-accent-primary-rgb), 0.18);
+}
+
+.term-add-shell:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 /* --- Modales --- */
 .modal {
   position: fixed;

@@ -1,4 +1,10 @@
-## ADDED Requirements
+# terminal-layout
+
+## Purpose
+
+Layout visual del área de terminal: fusión pestaña–panel con glow sakura, padding de seguridad frente al border-radius, cuadrícula interna de celdas y comportamiento nativo de los inputs del shell de la app.
+
+## Requirements
 
 ### Requirement: Unified Terminal Tabs Visual Layout
 La interfaz de terminal del cliente NekoSSH SHALL unificar visualmente la pestaña de sesión activa con el panel contenedor de la terminal, presentando un contorno continuo redondeado y con un glow sakura sutil.
@@ -24,3 +30,14 @@ Todos los elementos `<input>` del layout de la aplicación (excepto de tipo hidd
 #### Scenario: Foco en cualquier input de texto o búsqueda
 - **WHEN** el usuario hace clic o enfoca cualquier campo de entrada de texto, número o búsqueda en la aplicación
 - **THEN** el sistema no debe mostrar la lista desplegable de historial del navegador nativo.
+
+### Requirement: Cuadrícula interna del panel unificado
+El `.terminal-panel` de la pestaña activa SHALL contener una cuadrícula de celdas de terminal (hasta cuatro) sin romper la fusión visual pestaña–panel ni el glow sakura del contenedor unificado. El padding de seguridad del panel SHALL seguir evitando que el border-radius recorte el texto de cualquier celda visible.
+
+#### Scenario: Panel con varias celdas mantiene glow unificado
+- **WHEN** el contexto muestra dos o más shells en el grid
+- **THEN** el resplandor y el borde redondeado envuelven el bloque completo del panel, no cada celda por separado
+
+#### Scenario: Texto visible en celdas del grid
+- **WHEN** hay output cerca del borde de una celda en layout 2×2
+- **THEN** el texto permanece legible dentro del área útil (sin recorte por el radius del panel)

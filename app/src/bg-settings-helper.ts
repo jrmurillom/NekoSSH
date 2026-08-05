@@ -29,6 +29,37 @@ export function resolveBackgroundUrl(
   return normalized;
 }
 
+/**
+ * El input de fondo muestra una etiqueta legible (nombre del archivo elegido),
+ * que no es la URL que se pinta: la imagen local vive como data URL.
+ * Esto decide qué hacer al pulsar "Aplicar" sin borrar la imagen ya cargada.
+ */
+export type BackgroundApplyResult =
+  | { action: "clear" }
+  | { action: "set"; url: string }
+  | { action: "keep" }
+  | { action: "unsupported" };
+
+export function resolveBackgroundApply(
+  inputValue: string,
+  currentUrl: string
+): BackgroundApplyResult {
+  const trimmed = inputValue.trim();
+  if (!trimmed) return { action: "clear" };
+
+  if (
+    trimmed.startsWith("http://") ||
+    trimmed.startsWith("https://") ||
+    trimmed.startsWith("data:")
+  ) {
+    return { action: "set", url: trimmed };
+  }
+
+  // Nombre/ruta local: el protocolo asset está deshabilitado, así que no se puede
+  // pintar desde disco. Si ya hay imagen cargada, se conserva.
+  return currentUrl ? { action: "keep" } : { action: "unsupported" };
+}
+
 export function clampAndFormatOpacity(value: number): { numeric: number; formatted: string } {
   let num = isNaN(value) ? 0.3 : value;
   num = Math.max(0, Math.min(1, num));

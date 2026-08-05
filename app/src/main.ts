@@ -9,8 +9,15 @@ import { alertDialog, confirmDialog, showContextMenu } from "./overlays";
 import { initSnippetsUi } from "./snippets-ui";
 import { stripTrailingPasteNoise } from "./strip-trailing-paste";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
-import { clampAndFormatOpacity, calculateTerminalOverlayOpacity, resolveBackgroundUrl } from "./bg-settings-helper";
+import { clampAndFormatOpacity, calculateTerminalOverlayOpacity, resolveBackgroundUrl, resolveBackgroundApply } from "./bg-settings-helper";
 import { parseRemoteHistoryLines, copyCommandToClipboard } from "./modules/remote-history-helper";
+import {
+  MAX_CHILD_SHELLS,
+  canAddChildShell,
+  childShellLabel,
+  focusIndexAfterClose,
+  gridDensityClass,
+} from "./modules/shell-grid-helper";
 
 const THEME_TERMINAL_COLORS: Record<string, Record<string, string>> = {
   "nekossh": {
@@ -145,11 +152,8 @@ function applyTheme(themeName: string): void {
 
   // Sincronizar colores de todos los terminales xterm.js abiertos
   const termColors = THEME_TERMINAL_COLORS[themeName] || THEME_TERMINAL_COLORS["nekossh"];
-  document.querySelectorAll(".terminal-panel").forEach(panel => {
-    const termInstance = (panel as any).__xterm as Terminal | undefined;
-    if (termInstance) {
-      termInstance.options.theme = { ...termColors };
-    }
+  shellPanes.forEach((pane) => {
+    pane.term.options.theme = { ...termColors };
   });
 
   // Actualizar indicador visual del selector
@@ -183,15 +187,41 @@ interface ConnectionProfile {
   tunnel_dest?: string;
 }
 
+type ShellRole = "parent" | "child";
+
+/** Un shell dentro del contexto de pestaña: su propio terminal_id y Session SSH. */
+interface ShellPane {
+  terminalId: string;
+  contextId: string;
+  role: ShellRole;
+  label: string;
+  term: Terminal;
+  fitAddon: FitAddon;
+  cellEl: HTMLElement;
+  isConnected: boolean;
+  isReconnecting: boolean;
+}
+
+/**
+ * Contexto de pestaña: shell padre (ancla SFTP) + hasta MAX_CHILD_SHELLS hijos.
+ * `id` es el terminal_id del padre, por lo que el explorador sigue ligado al padre.
+ */
 interface ActiveTerminal {
   id: string;
   profileName: string;
   /** Snapshot / profile used to open (and reconnect) this tab */
   profile: ConnectionProfile;
-  term: Terminal;
-  fitAddon: FitAddon;
+  /** panes[0] es siempre el shell padre */
+  panes: ShellPane[];
+  focusedTerminalId: string;
+  gridEl: HTMLElement;
   panelEl: HTMLElement;
   tabEl: HTMLElement;
+  addShellBtn: HTMLButtonElement | null;
+  childSeq: number;
+  /** Alias al shell padre (compatibilidad con el resto del frontend) */
+  readonly term: Terminal;
+  readonly fitAddon: FitAddon;
   isConnected: boolean;
   isReconnecting: boolean;
   explorerCwd?: string;
@@ -244,6 +274,14 @@ let foldersExpandSeeded = false;
 
 const activeTerminals = new Map<string, ActiveTerminal>();
 let currentActiveTerminalId: string | null = null;
+
+/** Índice global de shells por terminal_id, para enrutar eventos SSH. */
+const shellPanes = new Map<string, ShellPane>();
+
+function getContextForTerminal(terminalId: string): ActiveTerminal | undefined {
+  const pane = shellPanes.get(terminalId);
+  return pane ? activeTerminals.get(pane.contextId) : undefined;
+}
 
 // --- DOM Elements ---
 let configBgUrlInput: HTMLInputElement | null = null;
@@ -353,6 +391,45 @@ let mainDisplayArea: HTMLElement | null = null;
 let terminalTabsList: HTMLElement | null = null;
 let btnCloseAllTerminals: HTMLButtonElement | null = null;
 
+/**
+ * URL real que se pinta como fondo (data URL de la imagen elegida o URL remota).
+ * El input de preferencias muestra solo la etiqueta del archivo, así que no se
+ * puede usar su valor como origen de la imagen.
+ */
+let bgImageUrl = "";
+
+const BG_URL_KEY = "nekossh-bg-url";
+const BG_LABEL_KEY = "nekossh-bg-label";
+const BG_OPACITY_KEY = "nekossh-bg-opacity";
+
+function currentBgOpacity(): number {
+  const raw = configBgOpacityInput?.value ?? localStorage.getItem(BG_OPACITY_KEY) ?? "0.30";
+  return clampAndFormatOpacity(parseFloat(raw)).numeric;
+}
+
+/** Guarda la imagen y la pinta. Si no cabe en localStorage, al menos queda viva en la sesión. */
+function persistBackground(url: string, label: string) {
+  bgImageUrl = url;
+  applyBackgroundSettings(url, currentBgOpacity());
+
+  try {
+    if (url) {
+      localStorage.setItem(BG_URL_KEY, url);
+      localStorage.setItem(BG_LABEL_KEY, label);
+    } else {
+      localStorage.removeItem(BG_URL_KEY);
+      localStorage.removeItem(BG_LABEL_KEY);
+    }
+  } catch (err) {
+    console.error("No se pudo guardar el fondo:", err);
+    void alertDialog({
+      title: "Fondo aplicado, pero no guardado",
+      message:
+        "La imagen es demasiado grande para el almacenamiento local. Se ve en esta sesión, pero se perderá al reiniciar. Usa una imagen más liviana.",
+    });
+  }
+}
+
 // --- Initialize App Settings (Background & Opacity + editor externo) ---
 function initSettings() {
   configBgUrlInput = document.getElementById("config-bg-url") as HTMLInputElement;
@@ -376,11 +453,16 @@ function initSettings() {
   if (btnClearBg) setButtonIcon(btnClearBg, AppIcons.trash2, { size: 14, className: "icon--sm" });
 
   // Cargar de localStorage
-  const savedBgUrl = localStorage.getItem("nekossh-bg-url") || "";
-  const savedOpacity = parseFloat(localStorage.getItem("nekossh-bg-opacity") || "0.30");
+  const savedBgUrl = localStorage.getItem(BG_URL_KEY) || "";
+  const savedOpacity = parseFloat(localStorage.getItem(BG_OPACITY_KEY) || "0.30");
   const { numeric: validOpacity, formatted: formattedOpacity } = clampAndFormatOpacity(savedOpacity);
 
-  if (configBgUrlInput) configBgUrlInput.value = savedBgUrl;
+  bgImageUrl = savedBgUrl;
+  // El campo muestra la etiqueta del archivo; una data URL no es legible ahí.
+  const savedLabel =
+    localStorage.getItem(BG_LABEL_KEY) || (savedBgUrl.startsWith("data:") ? "" : savedBgUrl);
+
+  if (configBgUrlInput) configBgUrlInput.value = savedLabel;
   if (configBgOpacityInput) configBgOpacityInput.value = validOpacity.toString();
   if (opacityValLabel) opacityValLabel.textContent = formattedOpacity;
 
@@ -410,46 +492,59 @@ function initSettings() {
 
   fileInputBg?.addEventListener("change", () => {
     if (fileInputBg.files && fileInputBg.files.length > 0) {
-      const selectedFile = fileInputBg.files[0] as File & { path?: string };
-      const fullPath = selectedFile.path || selectedFile.name;
-      if (configBgUrlInput) configBgUrlInput.value = fullPath;
-      const opacity = parseFloat(configBgOpacityInput?.value || "0.30");
+      const selectedFile = fileInputBg.files[0];
+      const label = selectedFile.name;
+      if (configBgUrlInput) configBgUrlInput.value = label;
 
       const reader = new FileReader();
       reader.onload = (ev) => {
         const dataUrl = ev.target?.result as string;
-        const urlToUse = dataUrl || fullPath;
-        localStorage.setItem("nekossh-bg-url", urlToUse);
-        applyBackgroundSettings(urlToUse, opacity);
+        if (!dataUrl) return;
+        persistBackground(dataUrl, label);
       };
       reader.onerror = () => {
-        localStorage.setItem("nekossh-bg-url", fullPath);
-        applyBackgroundSettings(fullPath, opacity);
+        void alertDialog({
+          title: "No se pudo leer la imagen",
+          message: "El archivo seleccionado no se pudo abrir. Intenta con otra imagen.",
+        });
       };
       reader.readAsDataURL(selectedFile);
     }
   });
 
   btnApplyBg?.addEventListener("click", () => {
-    const url = configBgUrlInput?.value.trim() || "";
-    const opacity = parseFloat(configBgOpacityInput?.value || "0.30");
-    localStorage.setItem("nekossh-bg-url", url);
-    applyBackgroundSettings(url, opacity);
+    const result = resolveBackgroundApply(configBgUrlInput?.value || "", bgImageUrl);
+    switch (result.action) {
+      case "clear":
+        persistBackground("", "");
+        break;
+      case "set":
+        persistBackground(result.url, result.url);
+        break;
+      case "keep":
+        applyBackgroundSettings(bgImageUrl, currentBgOpacity());
+        break;
+      case "unsupported":
+        void alertDialog({
+          title: "Ruta no soportada",
+          message:
+            "Escribe una URL http(s) o elige el archivo con el botón de explorar. Una ruta de disco escrita a mano no se puede cargar.",
+        });
+        break;
+    }
   });
 
   btnClearBg?.addEventListener("click", () => {
     if (configBgUrlInput) configBgUrlInput.value = "";
-    localStorage.removeItem("nekossh-bg-url");
-    const opacity = parseFloat(configBgOpacityInput?.value || "0.30");
-    applyBackgroundSettings("", opacity);
+    persistBackground("", "");
   });
 
   configBgOpacityInput?.addEventListener("input", (e) => {
     const target = e.target as HTMLInputElement;
     const { numeric: opacity, formatted } = clampAndFormatOpacity(parseFloat(target.value));
     if (opacityValLabel) opacityValLabel.textContent = formatted;
-    localStorage.setItem("nekossh-bg-opacity", opacity.toString());
-    applyBackgroundSettings(configBgUrlInput?.value.trim() || "", opacity);
+    localStorage.setItem(BG_OPACITY_KEY, opacity.toString());
+    applyBackgroundSettings(bgImageUrl, opacity);
   });
 
   void loadPreferredEditorIntoUi();
@@ -519,7 +614,7 @@ async function savePreferredEditorFromUi() {
 }
 
 function applyBackgroundSettings(url: string, opacity: number) {
-  const targetUrl = url || localStorage.getItem("nekossh-bg-url") || "";
+  const targetUrl = url || bgImageUrl;
   const resolvedUrl = resolveBackgroundUrl(targetUrl, convertFileSrc);
   const overlayOpacity = calculateTerminalOverlayOpacity(opacity);
 
@@ -1326,14 +1421,14 @@ window.addEventListener("DOMContentLoaded", () => {
 
 // Resizing de terminales globales
 window.addEventListener("resize", () => {
-  activeTerminals.forEach(t => {
-    if (t.isConnected) {
+  shellPanes.forEach((pane) => {
+    if (pane.isConnected) {
       setTimeout(() => {
-        t.fitAddon.fit();
+        pane.fitAddon.fit();
         invoke("resize_ssh_pty", {
-          terminalId: t.id,
-          cols: t.term.cols,
-          rows: t.term.rows
+          terminalId: pane.terminalId,
+          cols: pane.term.cols,
+          rows: pane.term.rows
         }).catch(err => console.error("Error al redimensionar PTY:", err));
       }, 50);
     }
@@ -1362,44 +1457,56 @@ function setTerminalConnectionStatus(
   }
 }
 
+/** Padre caído: el contexto queda offline y no se dejan hijos huérfanos sin SFTP. */
+function handleParentShellDown(ctx: ActiveTerminal) {
+  void closeChildShellsOf(ctx);
+  if (ctx.id === currentActiveTerminalId || ctx.id === explorerBoundTerminalId) {
+    showExplorerEmpty("Conecta un servidor para explorar archivos remotos.");
+    explorerRoot = null;
+    explorerBoundTerminalId = null;
+  }
+}
+
 function setupSshEventListeners() {
   // Escuchar por conexión establecida
   listen<SshEventPayload>("ssh-connected", (event) => {
     const termId = event.payload.terminal_id;
-    const activeTerm = activeTerminals.get(termId);
-    if (activeTerm) {
-      activeTerm.isConnected = true;
-      activeTerm.isReconnecting = false;
-      setTerminalConnectionStatus(activeTerm, "connected");
+    const pane = shellPanes.get(termId);
+    const activeTerm = getContextForTerminal(termId);
+    if (pane && activeTerm) {
+      pane.isConnected = true;
+      pane.isReconnecting = false;
+      setPaneStatus(pane, "connected");
+      if (pane.role === "parent") {
+        setTerminalConnectionStatus(activeTerm, "connected");
+      }
 
       // Limpiar terminal de mensajes previos
-      activeTerm.term.clear();
-      activeTerm.term.focus();
-      
+      pane.term.clear();
+      if (activeTerm.focusedTerminalId === termId) {
+        pane.term.focus();
+      }
+
       // Ajustar dimensiones PTY
       setTimeout(() => {
-        activeTerm.fitAddon.fit();
+        pane.fitAddon.fit();
         invoke("resize_ssh_pty", {
           terminalId: termId,
-          cols: activeTerm.term.cols,
-          rows: activeTerm.term.rows
+          cols: pane.term.cols,
+          rows: pane.term.rows
         }).catch(err => console.error("Error al redimensionar PTY inicial:", err));
       }, 100);
 
-      if (termId === currentActiveTerminalId) {
-        // No auto-listar SFTP al conectar: compite con el PTY y puede tumbar el transport.
-        // El usuario abre Archivos / Actualizar cuando quiera.
-      }
+      // No auto-listar SFTP al conectar: compite con el PTY y puede tumbar el transport.
+      // El usuario abre Archivos / Actualizar cuando quiera.
     }
   });
 
   // Escuchar por salida de la consola (stdout)
   listen<SshEventPayload>("ssh-stdout", (event) => {
-    const termId = event.payload.terminal_id;
-    const data = event.payload.data;
-    const activeTerm = activeTerminals.get(termId);
-    if (activeTerm) {
-      activeTerm.term.write(data);
+    const pane = shellPanes.get(event.payload.terminal_id);
+    if (pane) {
+      pane.term.write(event.payload.data);
     }
   });
 
@@ -1407,18 +1514,18 @@ function setupSshEventListeners() {
   listen<SshClosedPayload>("ssh-error", (event) => {
     const termId = event.payload.terminal_id;
     const errorMsg = event.payload.error || "Error desconocido";
-    const activeTerm = activeTerminals.get(termId);
-    if (activeTerm) {
-      activeTerm.isReconnecting = false;
-      activeTerm.term.write(
+    const pane = shellPanes.get(termId);
+    const activeTerm = getContextForTerminal(termId);
+    if (pane && activeTerm) {
+      pane.isReconnecting = false;
+      pane.term.write(
         `\r\n\x1b[31;1m[ERROR] ${errorMsg}\x1b[0m\r\n\x1b[33mCtrl+R para reconectar\x1b[0m\r\n`,
       );
-      setTerminalConnectionStatus(activeTerm, "error");
-      activeTerm.isConnected = false;
-      if (termId === currentActiveTerminalId || termId === explorerBoundTerminalId) {
-        showExplorerEmpty("Conecta un servidor para explorar archivos remotos.");
-        explorerRoot = null;
-        explorerBoundTerminalId = null;
+      setPaneStatus(pane, "error");
+      pane.isConnected = false;
+      if (pane.role === "parent") {
+        setTerminalConnectionStatus(activeTerm, "error");
+        handleParentShellDown(activeTerm);
       }
     }
   });
@@ -1426,21 +1533,21 @@ function setupSshEventListeners() {
   // Escuchar por sesión cerrada
   listen<SshClosedPayload>("ssh-closed", (event) => {
     const termId = event.payload.terminal_id;
-    const activeTerm = activeTerminals.get(termId);
-    if (activeTerm) {
-      activeTerm.isReconnecting = false;
-      if (activeTerm.isConnected) {
+    const pane = shellPanes.get(termId);
+    const activeTerm = getContextForTerminal(termId);
+    if (pane && activeTerm) {
+      pane.isReconnecting = false;
+      if (pane.isConnected) {
         const detail = event.payload.error ? ` (${event.payload.error})` : "";
-        activeTerm.term.write(
+        pane.term.write(
           `\r\n\x1b[33;1m[Conexión cerrada]${detail}\x1b[0m\r\n\x1b[33mCtrl+R para reconectar\x1b[0m\r\n`,
         );
       }
-      setTerminalConnectionStatus(activeTerm, "disconnected");
-      activeTerm.isConnected = false;
-      if (termId === currentActiveTerminalId || termId === explorerBoundTerminalId) {
-        showExplorerEmpty("Conecta un servidor para explorar archivos remotos.");
-        explorerRoot = null;
-        explorerBoundTerminalId = null;
+      setPaneStatus(pane, "disconnected");
+      pane.isConnected = false;
+      if (pane.role === "parent") {
+        setTerminalConnectionStatus(activeTerm, "disconnected");
+        handleParentShellDown(activeTerm);
       }
     }
   });
@@ -2039,6 +2146,244 @@ function highlightProfile(id: number | null) {
 }
 
 // --- SSH Connection Execution ---
+/** Densidad del grid del contexto (1..4 celdas) y refit de cada shell. */
+function applyGridDensity(ctx: ActiveTerminal) {
+  ctx.gridEl.className = gridDensityClass(ctx.panes.length);
+  if (ctx.addShellBtn) {
+    const canAdd = canAddChildShell(ctx.panes.length);
+    ctx.addShellBtn.disabled = !canAdd;
+    ctx.addShellBtn.title = canAdd
+      ? "Nuevo shell en este servidor"
+      : `Máximo ${MAX_CHILD_SHELLS} shells adicionales`;
+  }
+  setTimeout(() => {
+    ctx.panes.forEach((pane) => {
+      pane.fitAddon.fit();
+      if (pane.isConnected) {
+        invoke("resize_ssh_pty", {
+          terminalId: pane.terminalId,
+          cols: pane.term.cols,
+          rows: pane.term.rows,
+        }).catch((err) => console.error("Error al redimensionar PTY:", err));
+      }
+    });
+  }, 50);
+}
+
+function focusShellPane(ctx: ActiveTerminal, terminalId: string) {
+  const pane = ctx.panes.find((p) => p.terminalId === terminalId);
+  if (!pane) return;
+  ctx.focusedTerminalId = terminalId;
+  ctx.panes.forEach((p) => p.cellEl.classList.toggle("focused", p === pane));
+  pane.term.focus();
+}
+
+function setPaneStatus(
+  pane: ShellPane,
+  state: "connecting" | "connected" | "disconnected" | "error",
+) {
+  const dot = pane.cellEl.querySelector(".status-dot");
+  if (dot) dot.className = `status-dot ${state}`;
+}
+
+function createShellPane(
+  ctx: ActiveTerminal,
+  terminalId: string,
+  role: ShellRole,
+  label: string,
+): ShellPane {
+  const cellEl = document.createElement("div");
+  cellEl.className = "term-cell";
+  cellEl.id = `cell-${terminalId}`;
+  cellEl.innerHTML = `
+    <div class="term-cell-header">
+      <span class="status-dot connecting"></span>
+      <span class="term-cell-label">${escapeHtml(label)}</span>
+    </div>
+    <div class="terminal-canvas-container" id="canvas-${terminalId}"></div>
+  `;
+
+  if (role === "child") {
+    const cellClose = document.createElement("button");
+    cellClose.type = "button";
+    cellClose.className = "term-cell-close";
+    cellClose.title = "Cerrar este shell";
+    cellClose.setAttribute("aria-label", "Cerrar este shell");
+    setButtonIcon(cellClose, AppIcons.x, { size: 12, className: "icon--sm" });
+    cellClose.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      void closeChildShell(ctx, terminalId);
+    });
+    cellEl.querySelector(".term-cell-header")?.appendChild(cellClose);
+  }
+
+  ctx.gridEl.appendChild(cellEl);
+
+  const canvasContainer = cellEl.querySelector(".terminal-canvas-container") as HTMLElement;
+  const monoFontFamily =
+    getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() ||
+    "monospace";
+  const term = new Terminal({
+    allowTransparency: true,
+    cursorBlink: true,
+    cursorStyle: "block",
+    theme: { ...(THEME_TERMINAL_COLORS[getActiveTheme()] || THEME_TERMINAL_COLORS["nekossh"]) },
+    fontFamily: monoFontFamily,
+    fontSize: 14,
+  });
+
+  const fitAddon = new FitAddon();
+  term.loadAddon(fitAddon);
+  term.open(canvasContainer);
+  fitAddon.fit();
+
+  term.write("\x1b[35;1m[Iniciando sesión SSH en NekoSSH...]\x1b[0m\r\n");
+
+  // Evidencia: writes de 1 byte (onData por tecla) provocan "transport read" en libssh2
+  // con lector PTY concurrente. Coalescer ~16ms agrupa tecleo en un solo invoke/write.
+  const writeBuffer = { data: "" };
+  let writeTimer: ReturnType<typeof setTimeout> | null = null;
+  const flushWriteBuffer = () => {
+    writeTimer = null;
+    const payload = writeBuffer.data;
+    writeBuffer.data = "";
+    if (!payload) return;
+    invoke("write_ssh_input", { terminalId, data: payload })
+      .catch(err => console.error("Error al escribir input SSH:", err));
+  };
+  const enqueuePtyInput = (data: string) => {
+    if (!data) return;
+    writeBuffer.data += data;
+    if (writeTimer == null) {
+      writeTimer = setTimeout(flushWriteBuffer, 16);
+    }
+  };
+
+  term.onData((data) => {
+    enqueuePtyInput(data);
+  });
+
+  // Moba-style: seleccionar → copiar; clic derecho → pegar (sin Enter final).
+  // Clipboard nativo Tauri (sin prompt de permiso del WebView).
+  term.onSelectionChange(() => {
+    const selected = term.getSelection();
+    if (!selected) return;
+    void writeText(selected).catch((err) => {
+      console.error("Error al copiar selección de terminal:", err);
+    });
+  });
+
+  canvasContainer.addEventListener("contextmenu", (ev) => {
+    ev.preventDefault();
+    void (async () => {
+      try {
+        const raw = await readText();
+        const sanitized = stripTrailingPasteNoise(raw ?? "");
+        enqueuePtyInput(sanitized);
+      } catch (err) {
+        console.error("Error al pegar en terminal:", err);
+      }
+    })();
+  });
+
+  cellEl.addEventListener("mousedown", () => {
+    focusShellPane(ctx, terminalId);
+  });
+
+  // Ctrl+R: reconectar solo si este shell está desconectado (estilo Terminus/Moba).
+  term.attachCustomKeyEventHandler((ev) => {
+    if (ev.type !== "keydown") return true;
+    if (!(ev.ctrlKey && !ev.altKey && !ev.metaKey && (ev.key === "r" || ev.key === "R"))) {
+      return true;
+    }
+    const pane = shellPanes.get(terminalId);
+    if (!pane || pane.isConnected || pane.isReconnecting) {
+      return true; // dejar pasar al remoto si hay sesión viva
+    }
+    ev.preventDefault();
+    void reconnectTerminalSession(terminalId);
+    return false;
+  });
+
+  // Registrar resize del emulador hacia el backend
+  term.onResize((size) => {
+    invoke("resize_ssh_pty", {
+      terminalId,
+      cols: size.cols,
+      rows: size.rows
+    }).catch(err => console.error("Error al redimensionar PTY:", err));
+  });
+
+  const pane: ShellPane = {
+    terminalId,
+    contextId: ctx.id,
+    role,
+    label,
+    term,
+    fitAddon,
+    cellEl,
+    isConnected: false,
+    isReconnecting: false,
+  };
+
+  ctx.panes.push(pane);
+  shellPanes.set(terminalId, pane);
+  return pane;
+}
+
+/** Abre un shell hijo en el mismo contexto (mismo perfil, login independiente). */
+async function addChildShell(ctx: ActiveTerminal) {
+  if (!canAddChildShell(ctx.panes.length)) return;
+
+  const childId = `${ctx.id}-s${++ctx.childSeq}`;
+  const pane = createShellPane(ctx, childId, "child", childShellLabel(ctx.panes.length));
+  applyGridDensity(ctx);
+  focusShellPane(ctx, childId);
+
+  try {
+    await invokeStartSshSession(childId, ctx.profile);
+  } catch (err) {
+    console.error("Error al iniciar shell hijo:", err);
+    pane.isConnected = false;
+    setPaneStatus(pane, "error");
+    pane.term.write(
+      `\r\n\x1b[31;1m[ERROR] No se pudo abrir el shell: ${err}\x1b[0m\r\n\x1b[33mCtrl+R para reintentar\x1b[0m\r\n`,
+    );
+  }
+}
+
+/** Cierra un shell hijo sin tocar el padre ni el SFTP del contexto. */
+async function closeChildShell(ctx: ActiveTerminal, childId: string) {
+  const index = ctx.panes.findIndex((p) => p.terminalId === childId);
+  if (index <= 0) return; // 0 es el padre: no se cierra solo
+
+  const pane = ctx.panes[index];
+  pane.isConnected = false;
+
+  try {
+    await invoke("close_ssh_session", { terminalId: childId });
+  } catch (err) {
+    console.error("Error al cerrar shell hijo:", err);
+  }
+
+  pane.term.dispose();
+  pane.cellEl.remove();
+  ctx.panes.splice(index, 1);
+  shellPanes.delete(childId);
+
+  applyGridDensity(ctx);
+  const fallback = ctx.panes[focusIndexAfterClose(index, ctx.panes.length)] ?? ctx.panes[0];
+  if (fallback) focusShellPane(ctx, fallback.terminalId);
+}
+
+/** Cierra todos los hijos del contexto (padre caído o cierre de pestaña). */
+async function closeChildShellsOf(ctx: ActiveTerminal) {
+  const childIds = ctx.panes.filter((p) => p.role === "child").map((p) => p.terminalId);
+  for (const id of childIds) {
+    await closeChildShell(ctx, id);
+  }
+}
+
 function startNewSshConnection(profile: ConnectionProfile) {
   const terminalId = `term-${Date.now()}`;
   
@@ -2093,125 +2438,66 @@ function startNewSshConnection(profile: ConnectionProfile) {
         <div class="status-dot connecting"></div>
         <span class="terminal-status-text">Conectando...</span>
       </div>
-      <div class="terminal-info-text">${escapeHtml(profile.username)}@${escapeHtml(profile.host)}:${profile.port}</div>
+      <div class="terminal-panel-header-right">
+        <div class="terminal-info-text">${escapeHtml(profile.username)}@${escapeHtml(profile.host)}:${profile.port}</div>
+      </div>
     </div>
-    <div class="terminal-canvas-container" id="canvas-${terminalId}"></div>
+    <div class="term-grid cells-1" id="grid-${terminalId}"></div>
   `;
+
+  const addShellBtn = document.createElement("button");
+  addShellBtn.type = "button";
+  addShellBtn.className = "term-add-shell";
+  addShellBtn.title = "Nuevo shell en este servidor";
+  addShellBtn.setAttribute("aria-label", "Nuevo shell en este servidor");
+  setButtonIcon(addShellBtn, AppIcons.plus, { size: 12, className: "icon--sm" });
+  panelEl.querySelector(".terminal-panel-header-right")?.prepend(addShellBtn);
 
   mainDisplayArea?.appendChild(panelEl);
 
-  const savedBgUrl = localStorage.getItem("nekossh-bg-url") || "";
-  const savedOpacity = parseFloat(localStorage.getItem("nekossh-bg-opacity") || "0.30");
-  applyBackgroundSettings(savedBgUrl, savedOpacity);
+  applyBackgroundSettings(bgImageUrl, currentBgOpacity());
 
-  // 3. Inicializar xterm.js (tipografía desde tokens CSS en runtime)
-  const canvasContainer = panelEl.querySelector(`.terminal-canvas-container`) as HTMLElement;
-  const monoFontFamily =
-    getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() ||
-    "monospace";
-  const term = new Terminal({
-    allowTransparency: true,
-    cursorBlink: true,
-    cursorStyle: "block",
-    theme: { ...(THEME_TERMINAL_COLORS[getActiveTheme()] || THEME_TERMINAL_COLORS["nekossh"]) },
-    fontFamily: monoFontFamily,
-    fontSize: 14,
-  });
-
-  const fitAddon = new FitAddon();
-  term.loadAddon(fitAddon);
-
-  term.open(canvasContainer);
-  (panelEl as any).__xterm = term;
-  fitAddon.fit();
-
-  term.write("\x1b[35;1m[Iniciando sesión SSH en NekoSSH...]\x1b[0m\r\n");
-
-  // Evidencia: writes de 1 byte (onData por tecla) provocan "transport read" en libssh2
-  // con lector PTY concurrente. Coalescer ~16ms agrupa tecleo en un solo invoke/write.
-  let writeBuffer = { data: "" };
-  let writeTimer: ReturnType<typeof setTimeout> | null = null;
-  const flushWriteBuffer = () => {
-    writeTimer = null;
-    const payload = writeBuffer.data;
-    writeBuffer.data = "";
-    if (!payload) return;
-    invoke("write_ssh_input", { terminalId, data: payload })
-      .catch(err => console.error("Error al escribir input SSH:", err));
-  };
-  const enqueuePtyInput = (data: string) => {
-    if (!data) return;
-    writeBuffer.data += data;
-    if (writeTimer == null) {
-      writeTimer = setTimeout(flushWriteBuffer, 16);
-    }
-  };
-
-  term.onData((data) => {
-    enqueuePtyInput(data);
-  });
-
-  // Moba-style: seleccionar → copiar; clic derecho → pegar (sin Enter final).
-  // Clipboard nativo Tauri (sin prompt de permiso del WebView).
-  term.onSelectionChange(() => {
-    const selected = term.getSelection();
-    if (!selected) return;
-    void writeText(selected).catch((err) => {
-      console.error("Error al copiar selección de terminal:", err);
-    });
-  });
-
-  canvasContainer.addEventListener("contextmenu", (ev) => {
-    ev.preventDefault();
-    void (async () => {
-      try {
-        const raw = await readText();
-        const sanitized = stripTrailingPasteNoise(raw ?? "");
-        enqueuePtyInput(sanitized);
-      } catch (err) {
-        console.error("Error al pegar en terminal:", err);
-      }
-    })();
-  });
-
-  // Ctrl+R: reconectar solo si la pestaña está desconectada (estilo Terminus/Moba).
-  term.attachCustomKeyEventHandler((ev) => {
-    if (ev.type !== "keydown") return true;
-    if (!(ev.ctrlKey && !ev.altKey && !ev.metaKey && (ev.key === "r" || ev.key === "R"))) {
-      return true;
-    }
-    const at = activeTerminals.get(terminalId);
-    if (!at || at.isConnected || at.isReconnecting) {
-      return true; // dejar pasar al remoto si hay sesión viva
-    }
-    ev.preventDefault();
-    void reconnectTerminalSession(terminalId);
-    return false;
-  });
-
-  // Registrar resize del emulador hacia el backend
-  term.onResize((size) => {
-    invoke("resize_ssh_pty", {
-      terminalId,
-      cols: size.cols,
-      rows: size.rows
-    }).catch(err => console.error("Error al redimensionar PTY:", err));
-  });
-
-  // Guardar estado de la terminal activa
+  // 3. Crear el contexto de pestaña y su shell padre (ancla del SFTP)
   const activeTerm: ActiveTerminal = {
     id: terminalId,
     profileName: profile.name,
     profile: { ...profile },
-    term,
-    fitAddon,
+    panes: [],
+    focusedTerminalId: terminalId,
+    gridEl: panelEl.querySelector(".term-grid") as HTMLElement,
     panelEl,
     tabEl,
-    isConnected: false,
-    isReconnecting: false,
+    addShellBtn,
+    childSeq: 0,
+    get term() {
+      return this.panes[0].term;
+    },
+    get fitAddon() {
+      return this.panes[0].fitAddon;
+    },
+    get isConnected() {
+      return this.panes[0]?.isConnected ?? false;
+    },
+    set isConnected(value: boolean) {
+      if (this.panes[0]) this.panes[0].isConnected = value;
+    },
+    get isReconnecting() {
+      return this.panes[0]?.isReconnecting ?? false;
+    },
+    set isReconnecting(value: boolean) {
+      if (this.panes[0]) this.panes[0].isReconnecting = value;
+    },
   };
 
   activeTerminals.set(terminalId, activeTerm);
+  const parentPane = createShellPane(activeTerm, terminalId, "parent", "Principal");
+  applyGridDensity(activeTerm);
+  focusShellPane(activeTerm, terminalId);
+
+  addShellBtn.addEventListener("click", (ev) => {
+    ev.stopPropagation();
+    void addChildShell(activeTerm);
+  });
 
   // Seleccionar la terminal recién creada
   switchActiveTerminal(terminalId);
@@ -2219,12 +2505,10 @@ function startNewSshConnection(profile: ConnectionProfile) {
   // 4. Iniciar Conexión SSH en backend Rust
   void invokeStartSshSession(terminalId, profile).catch((err) => {
     console.error("Error al iniciar sesión SSH:", err);
-    term.write(`\r\n\x1b[31;1m[ERROR] No se pudo invocar el backend: ${err}\x1b[0m\r\n\x1b[33mCtrl+R para reconectar\x1b[0m\r\n`);
-    const at = activeTerminals.get(terminalId);
-    if (at) {
-      at.isConnected = false;
-      setTerminalConnectionStatus(at, "error");
-    }
+    parentPane.term.write(`\r\n\x1b[31;1m[ERROR] No se pudo invocar el backend: ${err}\x1b[0m\r\n\x1b[33mCtrl+R para reconectar\x1b[0m\r\n`);
+    parentPane.isConnected = false;
+    setPaneStatus(parentPane, "error");
+    setTerminalConnectionStatus(activeTerm, "error");
   });
 }
 
@@ -2251,12 +2535,16 @@ async function invokeStartSshSession(terminalId: string, profile: ConnectionProf
 }
 
 async function reconnectTerminalSession(terminalId: string) {
-  const activeTerm = activeTerminals.get(terminalId);
-  if (!activeTerm || activeTerm.isConnected || activeTerm.isReconnecting) return;
+  const pane = shellPanes.get(terminalId);
+  const activeTerm = getContextForTerminal(terminalId);
+  if (!pane || !activeTerm || pane.isConnected || pane.isReconnecting) return;
 
-  activeTerm.isReconnecting = true;
-  setTerminalConnectionStatus(activeTerm, "connecting", "Reconectando...");
-  activeTerm.term.write("\r\n\x1b[35;1m[Reconectando sesión SSH...]\x1b[0m\r\n");
+  pane.isReconnecting = true;
+  setPaneStatus(pane, "connecting");
+  if (pane.role === "parent") {
+    setTerminalConnectionStatus(activeTerm, "connecting", "Reconectando...");
+  }
+  pane.term.write("\r\n\x1b[35;1m[Reconectando sesión SSH...]\x1b[0m\r\n");
 
   // Cleanup idempotente por si quedó entrada stale en el backend.
   try {
@@ -2266,17 +2554,22 @@ async function reconnectTerminalSession(terminalId: string) {
   }
 
   const profile = resolveProfileForReconnect(activeTerm.profile);
-  activeTerm.profile = { ...profile };
-  activeTerm.profileName = profile.name;
+  if (pane.role === "parent") {
+    activeTerm.profile = { ...profile };
+    activeTerm.profileName = profile.name;
+  }
 
   try {
     await invokeStartSshSession(terminalId, profile);
   } catch (err) {
     console.error("Error al reconectar SSH:", err);
-    activeTerm.isReconnecting = false;
-    activeTerm.isConnected = false;
-    setTerminalConnectionStatus(activeTerm, "error");
-    activeTerm.term.write(
+    pane.isReconnecting = false;
+    pane.isConnected = false;
+    setPaneStatus(pane, "error");
+    if (pane.role === "parent") {
+      setTerminalConnectionStatus(activeTerm, "error");
+    }
+    pane.term.write(
       `\r\n\x1b[31;1m[ERROR] No se pudo reconectar: ${err}\x1b[0m\r\n\x1b[33mCtrl+R para reintentar\x1b[0m\r\n`,
     );
   }
@@ -2308,8 +2601,10 @@ function switchActiveTerminal(terminalId: string) {
 
       // Pequeño delay para asegurar render correcto y foco del DOM
       setTimeout(() => {
-        term.fitAddon.fit();
-        term.term.focus();
+        term.panes.forEach((pane) => pane.fitAddon.fit());
+        const focused =
+          term.panes.find((pane) => pane.terminalId === term.focusedTerminalId) ?? term.panes[0];
+        focused?.term.focus();
       }, 50);
     } else {
       term.tabEl.classList.remove("active");
@@ -2328,7 +2623,8 @@ async function closeTerminalSession(terminalId: string, skipConfirm = false) {
   const activeTerm = activeTerminals.get(terminalId);
   if (!activeTerm) return;
 
-  if (activeTerm.isConnected && !skipConfirm) {
+  const hasLiveSession = activeTerm.panes.some((pane) => pane.isConnected);
+  if (hasLiveSession && !skipConfirm) {
     const profileName = activeTerm.profile.name || `${activeTerm.profile.username}@${activeTerm.profile.host}`;
     const ok = await confirmDialog({
       title: "¿Cerrar sesión SSH activa?",
@@ -2338,6 +2634,9 @@ async function closeTerminalSession(terminalId: string, skipConfirm = false) {
     });
     if (!ok) return;
   }
+
+  // Cerrar primero los shells hijos: el contexto se va completo con la pestaña.
+  await closeChildShellsOf(activeTerm);
 
   // Marcar desconectado antes del invoke para que un ssh-closed tardío no pinte banner.
   activeTerm.isConnected = false;
@@ -2356,6 +2655,7 @@ async function closeTerminalSession(terminalId: string, skipConfirm = false) {
   }
 
   activeTerm.term.dispose();
+  shellPanes.delete(terminalId);
   activeTerm.tabEl.remove();
   activeTerm.panelEl.remove();
   activeTerminals.delete(terminalId);
@@ -2381,7 +2681,9 @@ async function closeTerminalSession(terminalId: string, skipConfirm = false) {
 async function closeAllTerminals() {
   if (activeTerminals.size === 0) return;
 
-  const connectedCount = Array.from(activeTerminals.values()).filter((t) => t.isConnected).length;
+  const connectedCount = Array.from(activeTerminals.values()).filter((t) =>
+    t.panes.some((pane) => pane.isConnected),
+  ).length;
   if (connectedCount > 0) {
     const ok = await confirmDialog({
       title: "¿Cerrar todas las terminales?",
@@ -2506,8 +2808,8 @@ async function openHistoryModal() {
 function closeHistoryModal() {
   historyModal?.classList.remove("active");
   if (currentActiveTerminalId) {
-    const term = activeTerminals.get(currentActiveTerminalId);
-    term?.term.focus();
+    const ctx = activeTerminals.get(currentActiveTerminalId);
+    if (ctx) focusShellPane(ctx, ctx.focusedTerminalId);
   }
 }
 
@@ -2608,7 +2910,7 @@ async function injectHistoryCommand(command: string, execute: boolean) {
 
   const data = execute ? `${command}\r` : command;
   void invoke("write_ssh_input", {
-    terminalId: currentActiveTerminalId,
+    terminalId: term.focusedTerminalId,
     data,
   });
 }

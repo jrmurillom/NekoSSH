@@ -1,7 +1,37 @@
 import { describe, expect, it } from "vitest";
-import { clampAndFormatOpacity, resolveBackgroundUrl, applyBackgroundStyle, calculateTerminalOverlayOpacity } from "./bg-settings-helper";
+import { clampAndFormatOpacity, resolveBackgroundUrl, applyBackgroundStyle, calculateTerminalOverlayOpacity, resolveBackgroundApply } from "./bg-settings-helper";
 
 describe("bg-settings-helper", () => {
+  describe("resolveBackgroundApply", () => {
+    const dataUrl = "data:image/png;base64,AAAA";
+
+    it("limpia el fondo cuando el campo queda vacío", () => {
+      expect(resolveBackgroundApply("", dataUrl)).toEqual({ action: "clear" });
+      expect(resolveBackgroundApply("   ", dataUrl)).toEqual({ action: "clear" });
+    });
+
+    it("aplica URLs remotas y data URLs", () => {
+      expect(resolveBackgroundApply("https://x.com/a.png", "")).toEqual({
+        action: "set",
+        url: "https://x.com/a.png",
+      });
+      expect(resolveBackgroundApply(dataUrl, "")).toEqual({ action: "set", url: dataUrl });
+    });
+
+    it("conserva la imagen cargada si el campo solo muestra el nombre del archivo", () => {
+      expect(resolveBackgroundApply("wallpaper.jpg", dataUrl)).toEqual({ action: "keep" });
+      expect(resolveBackgroundApply("C:\\fotos\\wallpaper.jpg", dataUrl)).toEqual({
+        action: "keep",
+      });
+    });
+
+    it("marca como no soportada una ruta suelta sin imagen cargada", () => {
+      expect(resolveBackgroundApply("C:\\fotos\\wallpaper.jpg", "")).toEqual({
+        action: "unsupported",
+      });
+    });
+  });
+
   describe("resolveBackgroundUrl", () => {
     it("debe retornar string vacío si la ruta está vacía o son solo espacios", () => {
       expect(resolveBackgroundUrl("")).toBe("");
