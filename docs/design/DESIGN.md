@@ -43,6 +43,10 @@ NekoSSH soporta 8 temas visuales conceptuales aplicados mediante el atributo `da
 | `persona5` | Persona 5 | Phantom Thieves | `#e60012` (Crimson) | `#ffffff` (White) |
 | `sailor-moon` | Sailor Moon | Serena Moon Light | `#ffd700` (Gold) | `#ff69b4` (Pink) |
 
+### Logo de marca por tema
+
+El logo del sidebar (`.brand-logo`) SHALL seguir el tema activo: un PNG por id en `app/src/assets/logos/<theme-id>.png`. Las fuentes SVG/PNG de diseño viven en `docs/design/logos/`. Al aplicar o restaurar el tema (`applyTheme`), el `src` del logo se actualiza con el mismo ciclo que CSS/`data-theme` y xterm. Id desconocido → fallback `nekossh.png`.
+
 ---
 
 ## 3. Tokens Semánticos (CSS Custom Properties)

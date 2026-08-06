@@ -7,11 +7,19 @@ Define los requisitos de marca visual de la aplicación, incluyendo el logotipo 
 ## Requirements
 
 ### Requirement: Visual App Logo
-La interfaz del cliente NekoSSH SHALL mostrar el logo oficial al lado izquierdo del título en la barra lateral, asegurando una presentación limpia y estéticamente alineada.
+La interfaz del cliente NekoSSH SHALL mostrar el logo oficial al lado izquierdo del título en la barra lateral, asegurando una presentación limpia y estéticamente alineada. El asset del logo SHALL corresponder al tema conceptual activo (un PNG por id de tema); si el id es desconocido o falta el asset, el sistema MUST usar el logo del tema `nekossh`.
 
 #### Scenario: Visualización del Logo en Sidebar
 - **WHEN** la aplicación es cargada en el cliente
-- **THEN** se debe renderizar el elemento del logo junto al título "NekoSSH" manteniendo el espaciado de la estética Cyber-Sakura.
+- **THEN** se debe renderizar el elemento del logo junto al título "NekoSSH" manteniendo el espaciado de la estética del tema activo
+
+#### Scenario: Logo alineado al tema al iniciar
+- **WHEN** la aplicación arranca con un tema guardado distinto de `nekossh` (p. ej. `hatsune-miku`)
+- **THEN** el logo del sidebar muestra el PNG de ese tema, no el logo rosa por defecto
+
+#### Scenario: Fallback de logo
+- **WHEN** el tema activo no tiene un PNG asociado o el id no está en el catálogo
+- **THEN** el sidebar muestra el logo del tema `nekossh`
 
 ### Requirement: Personalización y CRUD de Imagen de Fondo
 El cliente NekoSSH SHALL permitir a los usuarios seleccionar, aplicar, regular la opacidad y eliminar una imagen de fondo personalizada (desde URL o archivo local del SO) mediante el popover de preferencias, el cual recibe una nueva sección de selección de temas que coexiste con estos ajustes. Las rutas locales de archivos MUST convertirse con la API de activos de Tauri (`convertFileSrc`) para renderizarse correctamente sobre la capa base del tema activo.

@@ -18,6 +18,26 @@ import {
   focusIndexAfterClose,
   gridDensityClass,
 } from "./modules/shell-grid-helper";
+import { resolveBrandLogoUrl } from "./modules/brand-logo-helper";
+import logoNekossh from "./assets/logos/nekossh.png";
+import logoHatsuneMiku from "./assets/logos/hatsune-miku.png";
+import logoReiAyanami from "./assets/logos/rei-ayanami.png";
+import logoNeonEvangelion from "./assets/logos/neon-evangelion.png";
+import logoCyberpunkDavid from "./assets/logos/cyberpunk-david.png";
+import logoCyberpunkLucy from "./assets/logos/cyberpunk-lucy.png";
+import logoPersona5 from "./assets/logos/persona5.png";
+import logoSailorMoon from "./assets/logos/sailor-moon.png";
+
+const BRAND_LOGO_URLS: Record<string, string> = {
+  nekossh: logoNekossh,
+  "hatsune-miku": logoHatsuneMiku,
+  "rei-ayanami": logoReiAyanami,
+  "neon-evangelion": logoNeonEvangelion,
+  "cyberpunk-david": logoCyberpunkDavid,
+  "cyberpunk-lucy": logoCyberpunkLucy,
+  persona5: logoPersona5,
+  "sailor-moon": logoSailorMoon,
+};
 
 const THEME_TERMINAL_COLORS: Record<string, Record<string, string>> = {
   "nekossh": {
@@ -155,6 +175,12 @@ function applyTheme(themeName: string): void {
   shellPanes.forEach((pane) => {
     pane.term.options.theme = { ...termColors };
   });
+
+  // Logo de marca alineado al tema (fallback interno a nekossh)
+  const brandLogo = document.querySelector<HTMLImageElement>(".brand-logo");
+  if (brandLogo) {
+    brandLogo.src = resolveBrandLogoUrl(themeName, BRAND_LOGO_URLS);
+  }
 
   // Actualizar indicador visual del selector
   document.querySelectorAll(".theme-item").forEach(item => {
