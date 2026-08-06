@@ -3,6 +3,7 @@ import { invoke, convertFileSrc } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
+import { SearchAddon } from "@xterm/addon-search";
 import "@xterm/xterm/css/xterm.css";
 import { AppIcons, icon, setButtonIcon } from "./icons";
 import { alertDialog, confirmDialog, showContextMenu } from "./overlays";
@@ -54,7 +55,8 @@ const THEME_TERMINAL_COLORS: Record<string, Record<string, string>> = {
     foreground: "#f8f8f2",
     cursor: "#ff69b4",
     cursorAccent: "#080409",
-    selectionBackground: "rgba(255, 105, 180, 0.3)",
+    selectionBackground: "rgba(255, 105, 180, 0.45)",
+    selectionInactiveBackground: "rgba(255, 105, 180, 0.45)",
     black: "#000000",
     red: "#ff3131",
     green: "#39ff14",
@@ -69,7 +71,8 @@ const THEME_TERMINAL_COLORS: Record<string, Record<string, string>> = {
     foreground: "#e8f4f2",
     cursor: "#39c5bb",
     cursorAccent: "#060d0d",
-    selectionBackground: "rgba(57, 197, 187, 0.3)",
+    selectionBackground: "rgba(57, 197, 187, 0.45)",
+    selectionInactiveBackground: "rgba(57, 197, 187, 0.45)",
     black: "#000000",
     red: "#ff4444",
     green: "#39ff14",
@@ -84,7 +87,8 @@ const THEME_TERMINAL_COLORS: Record<string, Record<string, string>> = {
     foreground: "#dce6f0",
     cursor: "#4a7dbd",
     cursorAccent: "#060810",
-    selectionBackground: "rgba(74, 125, 189, 0.3)",
+    selectionBackground: "rgba(74, 125, 189, 0.45)",
+    selectionInactiveBackground: "rgba(74, 125, 189, 0.45)",
     black: "#000000",
     red: "#e74c3c",
     green: "#39ff14",
@@ -99,7 +103,8 @@ const THEME_TERMINAL_COLORS: Record<string, Record<string, string>> = {
     foreground: "#e8e6f0",
     cursor: "#66ff00",
     cursorAccent: "#0a0418",
-    selectionBackground: "rgba(102, 255, 0, 0.3)",
+    selectionBackground: "rgba(102, 255, 0, 0.45)",
+    selectionInactiveBackground: "rgba(102, 255, 0, 0.45)",
     black: "#000000",
     red: "#ff3131",
     green: "#66ff00",
@@ -114,7 +119,8 @@ const THEME_TERMINAL_COLORS: Record<string, Record<string, string>> = {
     foreground: "#f0ece0",
     cursor: "#f5c518",
     cursorAccent: "#0a0a06",
-    selectionBackground: "rgba(245, 197, 24, 0.3)",
+    selectionBackground: "rgba(245, 197, 24, 0.45)",
+    selectionInactiveBackground: "rgba(245, 197, 24, 0.45)",
     black: "#000000",
     red: "#e63946",
     green: "#39ff14",
@@ -129,7 +135,8 @@ const THEME_TERMINAL_COLORS: Record<string, Record<string, string>> = {
     foreground: "#f0e8f5",
     cursor: "#e040fb",
     cursorAccent: "#0a0610",
-    selectionBackground: "rgba(224, 64, 251, 0.3)",
+    selectionBackground: "rgba(224, 64, 251, 0.45)",
+    selectionInactiveBackground: "rgba(224, 64, 251, 0.45)",
     black: "#000000",
     red: "#ff3131",
     green: "#39ff14",
@@ -144,7 +151,8 @@ const THEME_TERMINAL_COLORS: Record<string, Record<string, string>> = {
     foreground: "#ffffff",
     cursor: "#e60012",
     cursorAccent: "#080808",
-    selectionBackground: "rgba(230, 0, 18, 0.3)",
+    selectionBackground: "rgba(230, 0, 18, 0.45)",
+    selectionInactiveBackground: "rgba(230, 0, 18, 0.45)",
     black: "#000000",
     red: "#ff0000",
     green: "#39ff14",
@@ -159,7 +167,8 @@ const THEME_TERMINAL_COLORS: Record<string, Record<string, string>> = {
     foreground: "#f5f0ff",
     cursor: "#ffd700",
     cursorAccent: "#0a0814",
-    selectionBackground: "rgba(255, 215, 0, 0.3)",
+    selectionBackground: "rgba(255, 215, 0, 0.45)",
+    selectionInactiveBackground: "rgba(255, 215, 0, 0.45)",
     black: "#000000",
     red: "#ff3131",
     green: "#39ff14",
@@ -235,6 +244,8 @@ interface ShellPane {
   label: string;
   term: Terminal;
   fitAddon: FitAddon;
+  searchAddon?: SearchAddon;
+  searchBarEl?: HTMLElement;
   cellEl: HTMLElement;
   isConnected: boolean;
   isReconnecting: boolean;
@@ -2543,6 +2554,72 @@ function createShellPane(
 
   const fitAddon = new FitAddon();
   term.loadAddon(fitAddon);
+
+  const searchAddon = new SearchAddon();
+  term.loadAddon(searchAddon);
+
+  const template = document.getElementById("terminal-search-template") as HTMLTemplateElement;
+  let searchBarEl: HTMLElement | undefined;
+  if (template) {
+    const clone = template.content.cloneNode(true) as DocumentFragment;
+    searchBarEl = clone.querySelector(".terminal-search-bar") as HTMLElement;
+    
+    const searchInput = searchBarEl.querySelector(".search-input") as HTMLInputElement;
+    const btnCase = searchBarEl.querySelector(".btn-case") as HTMLButtonElement;
+    const btnPrev = searchBarEl.querySelector(".btn-prev") as HTMLButtonElement;
+    const btnNext = searchBarEl.querySelector(".btn-next") as HTMLButtonElement;
+    const btnClose = searchBarEl.querySelector(".btn-close") as HTMLButtonElement;
+    const resultsCounter = searchBarEl.querySelector(".search-results-counter") as HTMLSpanElement;
+
+    setButtonIcon(btnPrev, AppIcons.arrowUp, { size: 12 });
+    setButtonIcon(btnNext, AppIcons.arrowUp, { size: 12, className: "icon-rotate-180" });
+    setButtonIcon(btnClose, AppIcons.x, { size: 12 });
+
+    let caseSensitive = false;
+
+    const performSearch = (backwards = false) => {
+      const text = searchInput.value;
+      if (!text) {
+        searchAddon.clearActiveDecoration();
+        resultsCounter.textContent = "0";
+        return;
+      }
+      const result = backwards
+        ? searchAddon.findPrevious(text, { incremental: true, caseSensitive })
+        : searchAddon.findNext(text, { incremental: true, caseSensitive });
+      resultsCounter.textContent = result ? "✓" : "0";
+    };
+
+    searchInput.addEventListener("input", () => performSearch(false));
+    btnCase.addEventListener("click", () => {
+      caseSensitive = !caseSensitive;
+      btnCase.classList.toggle("active", caseSensitive);
+      performSearch(false);
+    });
+    btnPrev.addEventListener("click", () => performSearch(true));
+    btnNext.addEventListener("click", () => performSearch(false));
+    
+    const closeSearch = () => {
+      searchBarEl?.classList.add("hidden");
+      searchAddon.clearActiveDecoration();
+      term.focus();
+    };
+
+    btnClose.addEventListener("click", closeSearch);
+    
+    searchInput.addEventListener("keydown", (ev) => {
+      if (ev.key === "Enter") {
+        ev.preventDefault();
+        performSearch(ev.shiftKey);
+      } else if (ev.key === "Escape") {
+        ev.preventDefault();
+        closeSearch();
+      }
+    });
+
+    cellEl.appendChild(searchBarEl);
+  }
+
   term.open(canvasContainer);
   fitAddon.fit();
 
@@ -2599,19 +2676,46 @@ function createShellPane(
     focusShellPane(ctx, terminalId);
   });
 
-  // Ctrl+R: reconectar solo si este shell está desconectado (estilo Terminus/Moba).
+  // Ctrl+Shift+F / Esc / Ctrl+R: interceptar teclas personalizadas de NekoSSH
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== "keydown") return true;
-    if (!(ev.ctrlKey && !ev.altKey && !ev.metaKey && (ev.key === "r" || ev.key === "R"))) {
-      return true;
+
+    // Ctrl+Shift+F: abrir/enfocar buscador
+    if (ev.ctrlKey && ev.shiftKey && ev.key.toLowerCase() === "f") {
+      ev.preventDefault();
+      if (searchBarEl) {
+        searchBarEl.classList.remove("hidden");
+        const input = searchBarEl.querySelector(".search-input") as HTMLInputElement;
+        if (input) {
+          input.focus();
+          input.select();
+        }
+      }
+      return false;
     }
-    const pane = shellPanes.get(terminalId);
-    if (!pane || pane.isConnected || pane.isReconnecting) {
-      return true; // dejar pasar al remoto si hay sesión viva
+
+    // Escape: cerrar buscador
+    if (ev.key === "Escape") {
+      if (searchBarEl && !searchBarEl.classList.contains("hidden")) {
+        ev.preventDefault();
+        searchBarEl.classList.add("hidden");
+        searchAddon.clearActiveDecoration();
+        term.focus();
+        return false;
+      }
     }
-    ev.preventDefault();
-    void reconnectTerminalSession(terminalId);
-    return false;
+
+    // Ctrl+R: reconectar solo si este shell está desconectado (estilo Terminus/Moba).
+    if (ev.ctrlKey && !ev.altKey && !ev.metaKey && (ev.key === "r" || ev.key === "R")) {
+      const pane = shellPanes.get(terminalId);
+      if (pane && !pane.isConnected && !pane.isReconnecting) {
+        ev.preventDefault();
+        void reconnectTerminalSession(terminalId);
+        return false;
+      }
+    }
+
+    return true;
   });
 
   // Registrar resize del emulador hacia el backend
@@ -2630,6 +2734,8 @@ function createShellPane(
     label,
     term,
     fitAddon,
+    searchAddon,
+    searchBarEl,
     cellEl,
     isConnected: false,
     isReconnecting: false,

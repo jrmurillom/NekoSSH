@@ -2856,3 +2856,99 @@ input[type="range"]::-webkit-slider-thumb {
   width: 14px;
   height: 14px;
 }
+
+/* Buscador Flotante de Terminal (Ctrl+Shift+F) */
+.terminal-search-bar {
+  position: absolute;
+  top: 36px;
+  right: 12px;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: rgba(13, 11, 19, 0.85);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 105, 180, 0.4);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5), 0 0 10px rgba(255, 105, 180, 0.15);
+  border-radius: 6px;
+  transition: opacity 0.2s ease, transform 0.2s ease;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.terminal-search-bar.hidden {
+  opacity: 0;
+  transform: translateY(-8px);
+  pointer-events: none;
+  display: none; /* previene click e interacción */
+}
+
+.terminal-search-bar .search-input {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: var(--color-text-primary);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.8rem;
+  padding: 4px 8px;
+  border-radius: 4px;
+  width: 140px;
+  outline: none;
+  transition: border-color var(--transition-fast);
+}
+
+.terminal-search-bar .search-input:focus {
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 5px rgba(255, 105, 180, 0.3);
+}
+
+.terminal-search-bar .search-results-counter {
+  color: var(--color-text-muted);
+  font-family: var(--font-mono, monospace);
+  font-size: 0.75rem;
+  min-width: 45px;
+  text-align: center;
+  user-select: none;
+}
+
+.terminal-search-bar .search-btn {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--color-text-primary);
+  width: 24px;
+  height: 24px;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: all var(--transition-fast);
+}
+
+.terminal-search-bar .search-btn:hover {
+  background: rgba(255, 105, 180, 0.15);
+  border-color: var(--color-accent-primary);
+  color: var(--color-accent-primary);
+}
+
+.terminal-search-bar .search-btn.active {
+  background: var(--color-accent-primary);
+  border-color: var(--color-accent-primary);
+  color: #000;
+  box-shadow: 0 0 8px var(--color-accent-primary);
+}
+
+.terminal-search-bar .search-btn svg {
+  width: 14px;
+  height: 14px;
+  stroke: currentColor;
+}
+
+.terminal-search-bar .btn-case {
+  font-family: var(--font-sans, sans-serif);
+  font-size: 0.75rem;
+  font-weight: bold;
+}
+

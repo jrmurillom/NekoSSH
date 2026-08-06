@@ -6,6 +6,15 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-08-06
+
+### Added
+
+- Buscador flotante en la terminal activa (`Ctrl + Shift + F`) para buscar texto en el buffer.
+- Mapeado atajo `Esc` para cerrar el buscador y devolver el foco a la terminal de forma nativa.
+- Configurada propiedad `selectionInactiveBackground` en todos los temas del emulador para conservar el resaltado visual brillante de la coincidencia activa (opacidad `0.45` coincidiendo con la fuerza de color de cada tema) cuando la terminal pierde el foco al enfocar el input de búsqueda.
+- Integrado el complemento oficial `@xterm/addon-search` de forma dinámica para cada celda de terminal.
+
 ## [0.1.2] - 2026-08-06
 
 ### Added
