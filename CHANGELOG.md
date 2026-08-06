@@ -6,6 +6,8 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-08-05
+
 ### Added
 
 - Persistencia de wallpaper por tema en SQLite (`theme_wallpapers`) con copia de imagen en el data dir de la app (`wallpapers/`).
@@ -23,3 +25,7 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 ### Fixed
 
 - Imágenes grandes de fondo se pueden persistir entre reinicios (ya no “aplicado pero no guardado” por cupo de storage).
+
+## [0.1.0] - 2026-08-05
+
+- Release inicial publicado en GitHub.
