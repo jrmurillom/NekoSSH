@@ -1,25 +1,4 @@
-# app-branding
-
-## Purpose
-
-Define los requisitos de marca visual de la aplicación, incluyendo el logotipo y elementos identificadores principales del cliente NekoSSH dentro de la UI, asegurando nitidez e integridad con la arquitectura de temas.
-
-## Requirements
-
-### Requirement: Visual App Logo
-La interfaz del cliente NekoSSH SHALL mostrar el logo oficial al lado izquierdo del título en la barra lateral, asegurando una presentación limpia y estéticamente alineada. El asset del logo SHALL corresponder al tema conceptual activo (un PNG por id de tema); si el id es desconocido o falta el asset, el sistema MUST usar el logo del tema `nekossh`.
-
-#### Scenario: Visualización del Logo en Sidebar
-- **WHEN** la aplicación es cargada en el cliente
-- **THEN** se debe renderizar el elemento del logo junto al título "NekoSSH" manteniendo el espaciado de la estética del tema activo
-
-#### Scenario: Logo alineado al tema al iniciar
-- **WHEN** la aplicación arranca con un tema guardado distinto de `nekossh` (p. ej. `hatsune-miku`)
-- **THEN** el logo del sidebar muestra el PNG de ese tema, no el logo rosa por defecto
-
-#### Scenario: Fallback de logo
-- **WHEN** el tema activo no tiene un PNG asociado o el id no está en el catálogo
-- **THEN** el sidebar muestra el logo del tema `nekossh`
+## MODIFIED Requirements
 
 ### Requirement: Personalización y CRUD de Imagen de Fondo
 El cliente NekoSSH SHALL permitir a los usuarios seleccionar, aplicar, regular la opacidad y eliminar una imagen de fondo personalizada (desde URL o archivo local del SO) mediante el popover de preferencias, el cual recibe una sección de selección de temas que coexiste con estos ajustes. La imagen, la etiqueta mostrada y la opacidad SHALL persistirse **asociadas al tema conceptual activo** en SQLite (metadatos) y, para archivos locales, como copia en el directorio de datos de la aplicación; cambios de fondo MUST NOT alterar el wallpaper de otros temas. Las imágenes de archivo local MUST renderizarse vía protocolo de assets / `convertFileSrc` sobre la ruta de la copia en el data dir — MUST NOT persistirse como data URL en `localStorage`. Las URLs `http`/`https` MAY persistirse como URL en la base de datos sin copiar el binario a disco.
@@ -58,24 +37,3 @@ El sistema SHALL mantener una fila por id de tema en la tabla SQLite de wallpape
 #### Scenario: Migración desde claves globales legacy
 - **WHEN** la app arranca y encuentra `nekossh-bg-url` (u opacity) legacy sin fila migrada para el tema destino
 - **THEN** esos valores se asignan al tema activo (o `nekossh`) en SQLite/disco y las claves globales dejan de gobernar el fondo
-
-### Requirement: Imagen de Fondo y Opacidad Exclusiva en la Terminal
-El sistema NekoSSH MUST aplicar la imagen de fondo seleccionada y su regulador de opacidad (`#config-bg-opacity`) exclusivamente dentro del contenedor de la tarjeta de la terminal (`.terminal-panel`). El resto de la aplicación (barra lateral y contenedores globales) MUST permanecer con sus estilos originales sin alterations.
-
-#### Scenario: Configurar fondo y ajustar opacidad en la terminal
-- **WHEN** el usuario selecciona una imagen y ajusta el slider de opacidad en el panel de preferencias
-- **THEN** la imagen se renderiza dentro del recuadro de la terminal y la opacidad regula la visibilidad de la imagen debajo del texto de la consola SSH
-
-### Requirement: Extracción de Tokens para Terminal
-Los colores de la terminal xterm.js SHALL ser leídos desde los tokens del tema conceptual en uso, sustituyendo los colores estáticos "hardcoded".
-
-#### Scenario: Sincronización de colores en el terminal
-- **WHEN** se inicializa el terminal o cambia el tema
-- **THEN** xterm.js utiliza los tokens definidos en el tema activo en lugar de colores codificados de manera rígida en la configuración.
-
-### Requirement: Modularidad y Cobertura de Pruebas Unitarias de Dominio
-El sistema NekoSSH MUST contar con módulos desacoplados para la lógica pura de conexiones y rutas SFTP, y MUST mantener una suite de pruebas unitarias automatizadas que validen las transiciones de la máquina de estados de edición, la sanitización de comandos elevados y el ordenamiento de perfiles.
-
-#### Scenario: Ejecución de pruebas unitarias valiosas
-- **WHEN** se ejecutan los comandos de prueba `cargo test` y `npm run test`
-- **THEN** la suite valida exitosamente la lógica pura de la máquina de estados, sanitización de comillas y manipulación de rutas SFTP sin errores.

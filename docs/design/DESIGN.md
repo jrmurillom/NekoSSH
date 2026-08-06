@@ -47,6 +47,10 @@ NekoSSH soporta 8 temas visuales conceptuales aplicados mediante el atributo `da
 
 El logo del sidebar (`.brand-logo`) SHALL seguir el tema activo: un PNG por id en `app/src/assets/logos/<theme-id>.png`. Las fuentes SVG/PNG de diseño viven en `docs/design/logos/`. Al aplicar o restaurar el tema (`applyTheme`), el `src` del logo se actualiza con el mismo ciclo que CSS/`data-theme` y xterm. Id desconocido → fallback `nekossh.png`.
 
+### Wallpaper de terminal por tema
+
+El fondo de `.terminal-panel` (imagen + etiqueta + opacidad) se guarda **por id de tema** en SQLite (`theme_wallpapers`: metadatos) y, para archivos locales, como copia bajo `{appData}/wallpapers/`. Las URLs `http(s)` se guardan como URL en la BD. Al cambiar o restaurar tema, `applyTheme` reaplica el wallpaper de ese id vía IPC (vacío si nunca se configuró). Subir/quitar/ajustar opacidad solo afecta el tema activo. El mapa legacy en `localStorage` (`nekossh-bg-by-theme` y claves globales `nekossh-bg-*`) se migra una sola vez a BD/disco y deja de usarse. **No** se persisten data URLs en `localStorage`.
+
 ---
 
 ## 3. Tokens Semánticos (CSS Custom Properties)

@@ -19,6 +19,15 @@ import {
   gridDensityClass,
 } from "./modules/shell-grid-helper";
 import { resolveBrandLogoUrl } from "./modules/brand-logo-helper";
+import {
+  BG_BY_THEME_KEY,
+  DEFAULT_WALLPAPER_OPACITY,
+  LEGACY_BG_LABEL_KEY,
+  LEGACY_BG_OPACITY_KEY,
+  LEGACY_BG_URL_KEY,
+  parseThemeWallpaperMap,
+  type ThemeWallpaper,
+} from "./modules/theme-wallpaper-helper";
 import logoNekossh from "./assets/logos/nekossh.png";
 import logoHatsuneMiku from "./assets/logos/hatsune-miku.png";
 import logoReiAyanami from "./assets/logos/rei-ayanami.png";
@@ -181,6 +190,9 @@ function applyTheme(themeName: string): void {
   if (brandLogo) {
     brandLogo.src = resolveBrandLogoUrl(themeName, BRAND_LOGO_URLS);
   }
+
+  // Wallpaper de terminal scoped al tema (async IPC)
+  void applyThemeWallpaper(themeName);
 
   // Actualizar indicador visual del selector
   document.querySelectorAll(".theme-item").forEach(item => {
@@ -418,41 +430,236 @@ let terminalTabsList: HTMLElement | null = null;
 let btnCloseAllTerminals: HTMLButtonElement | null = null;
 
 /**
- * URL real que se pinta como fondo (data URL de la imagen elegida o URL remota).
- * El input de preferencias muestra solo la etiqueta del archivo, así que no se
- * puede usar su valor como origen de la imagen.
+ * URL real que se pinta como fondo (path absoluto bajo app data, http(s) o vacío).
+ * El input de preferencias muestra solo la etiqueta del archivo.
  */
 let bgImageUrl = "";
 
-const BG_URL_KEY = "nekossh-bg-url";
-const BG_LABEL_KEY = "nekossh-bg-label";
-const BG_OPACITY_KEY = "nekossh-bg-opacity";
+type ThemeWallpaperDto = {
+  theme_id: string;
+  label: string;
+  opacity: number;
+  source_kind: "file" | "url" | "none";
+  display_url: string;
+};
 
-function currentBgOpacity(): number {
-  const raw = configBgOpacityInput?.value ?? localStorage.getItem(BG_OPACITY_KEY) ?? "0.30";
-  return clampAndFormatOpacity(parseFloat(raw)).numeric;
+function dtoToEntry(dto: ThemeWallpaperDto): ThemeWallpaper {
+  return {
+    url: dto.display_url || "",
+    label: dto.label || "",
+    opacity: clampAndFormatOpacity(dto.opacity).numeric,
+  };
 }
 
-/** Guarda la imagen y la pinta. Si no cabe en localStorage, al menos queda viva en la sesión. */
-function persistBackground(url: string, label: string) {
-  bgImageUrl = url;
-  applyBackgroundSettings(url, currentBgOpacity());
-
+async function fetchThemeWallpaper(themeId: string): Promise<ThemeWallpaper> {
   try {
-    if (url) {
-      localStorage.setItem(BG_URL_KEY, url);
-      localStorage.setItem(BG_LABEL_KEY, label);
-    } else {
-      localStorage.removeItem(BG_URL_KEY);
-      localStorage.removeItem(BG_LABEL_KEY);
+    const dto = await invoke<ThemeWallpaperDto>("get_theme_wallpaper_cmd", { themeId });
+    return dtoToEntry(dto);
+  } catch (err) {
+    console.error("No se pudo cargar wallpaper del tema:", err);
+    return {
+      url: "",
+      label: "",
+      opacity: DEFAULT_WALLPAPER_OPACITY,
+    };
+  }
+}
+
+function clearLegacyWallpaperKeys(): void {
+  localStorage.removeItem(LEGACY_BG_URL_KEY);
+  localStorage.removeItem(LEGACY_BG_LABEL_KEY);
+  localStorage.removeItem(LEGACY_BG_OPACITY_KEY);
+  localStorage.removeItem(BG_BY_THEME_KEY);
+}
+
+/**
+ * Migración one-shot: localStorage (mapa por tema + legacy globales) → SQLite + disco.
+ */
+async function migrateWallpapersFromLocalStorageIfNeeded(): Promise<void> {
+  const mapRaw = localStorage.getItem(BG_BY_THEME_KEY);
+  const legacyUrl = localStorage.getItem(LEGACY_BG_URL_KEY);
+  const legacyLabel = localStorage.getItem(LEGACY_BG_LABEL_KEY);
+  const legacyOpacity = localStorage.getItem(LEGACY_BG_OPACITY_KEY);
+  const hasLegacy =
+    (legacyUrl != null && legacyUrl !== "") ||
+    (legacyLabel != null && legacyLabel !== "") ||
+    legacyOpacity != null;
+
+  if (!mapRaw && !hasLegacy) return;
+
+  const map = parseThemeWallpaperMap(mapRaw);
+  if (hasLegacy && !Object.prototype.hasOwnProperty.call(map, getActiveTheme())) {
+    const opacity = clampAndFormatOpacity(
+      legacyOpacity != null ? parseFloat(legacyOpacity) : DEFAULT_WALLPAPER_OPACITY,
+    ).numeric;
+    const url = legacyUrl ?? "";
+    map[getActiveTheme()] = {
+      url,
+      label: legacyLabel || (url && !url.startsWith("data:") ? url : ""),
+      opacity,
+    };
+  }
+
+  for (const [themeId, entry] of Object.entries(map)) {
+    if (!entry.url) {
+      try {
+        await invoke("set_theme_wallpaper_opacity_cmd", {
+          themeId,
+          opacity: entry.opacity,
+        });
+      } catch (err) {
+        console.error(`Migración opacity ${themeId}:`, err);
+      }
+      continue;
     }
+    try {
+      if (entry.url.startsWith("data:")) {
+        await invoke("set_theme_wallpaper_data_url_cmd", {
+          themeId,
+          dataUrl: entry.url,
+          label: entry.label || "",
+          opacity: entry.opacity,
+        });
+      } else if (entry.url.startsWith("http://") || entry.url.startsWith("https://")) {
+        await invoke("set_theme_wallpaper_url_cmd", {
+          themeId,
+          url: entry.url,
+          label: entry.label || entry.url,
+          opacity: entry.opacity,
+        });
+      } else {
+        // Path de disco legacy: intentar copiar
+        await invoke("set_theme_wallpaper_file_cmd", {
+          themeId,
+          sourcePath: entry.url,
+          label: entry.label || entry.url,
+          opacity: entry.opacity,
+        });
+      }
+    } catch (err) {
+      console.error(`No se pudo migrar wallpaper de ${themeId}:`, err);
+    }
+  }
+
+  clearLegacyWallpaperKeys();
+}
+
+function syncWallpaperControls(entry: ThemeWallpaper): void {
+  bgImageUrl = entry.url;
+  const label =
+    entry.label || (entry.url && !entry.url.startsWith("data:") ? entry.url : "");
+  const { numeric, formatted } = clampAndFormatOpacity(entry.opacity);
+  if (configBgUrlInput) configBgUrlInput.value = label;
+  if (configBgOpacityInput) configBgOpacityInput.value = numeric.toString();
+  if (opacityValLabel) opacityValLabel.textContent = formatted;
+}
+
+async function applyThemeWallpaper(themeId: string): Promise<void> {
+  const entry = await fetchThemeWallpaper(themeId);
+  syncWallpaperControls(entry);
+  applyBackgroundSettings(entry.url, entry.opacity);
+}
+
+function currentBgOpacity(): number {
+  const raw = configBgOpacityInput?.value;
+  if (raw != null && raw !== "") {
+    return clampAndFormatOpacity(parseFloat(raw)).numeric;
+  }
+  return DEFAULT_WALLPAPER_OPACITY;
+}
+
+function applyDtoToUi(dto: ThemeWallpaperDto): void {
+  const entry = dtoToEntry(dto);
+  syncWallpaperControls(entry);
+  applyBackgroundSettings(entry.url, entry.opacity);
+}
+
+/** Guarda la imagen del tema activo y la pinta. */
+async function persistBackgroundFromFile(sourcePath: string, label: string): Promise<void> {
+  const themeId = getActiveTheme();
+  const opacity = currentBgOpacity();
+  try {
+    const dto = await invoke<ThemeWallpaperDto>("set_theme_wallpaper_file_cmd", {
+      themeId,
+      sourcePath,
+      label,
+      opacity,
+    });
+    applyDtoToUi(dto);
   } catch (err) {
     console.error("No se pudo guardar el fondo:", err);
     void alertDialog({
-      title: "Fondo aplicado, pero no guardado",
-      message:
-        "La imagen es demasiado grande para el almacenamiento local. Se ve en esta sesión, pero se perderá al reiniciar. Usa una imagen más liviana.",
+      title: "No se pudo guardar el fondo",
+      message: String(err),
     });
+  }
+}
+
+async function persistBackgroundFromBytes(
+  bytes: Uint8Array,
+  ext: string,
+  label: string,
+): Promise<void> {
+  const themeId = getActiveTheme();
+  const opacity = currentBgOpacity();
+  try {
+    const dto = await invoke<ThemeWallpaperDto>("set_theme_wallpaper_bytes_cmd", {
+      themeId,
+      bytes: Array.from(bytes),
+      ext,
+      label,
+      opacity,
+    });
+    applyDtoToUi(dto);
+  } catch (err) {
+    console.error("No se pudo guardar el fondo:", err);
+    void alertDialog({
+      title: "No se pudo guardar el fondo",
+      message: String(err),
+    });
+  }
+}
+
+async function persistBackgroundUrl(url: string, label: string): Promise<void> {
+  const themeId = getActiveTheme();
+  const opacity = currentBgOpacity();
+  try {
+    if (!url) {
+      await invoke("clear_theme_wallpaper_cmd", { themeId });
+      syncWallpaperControls({ url: "", label: "", opacity });
+      applyBackgroundSettings("", opacity);
+      return;
+    }
+    const dto = await invoke<ThemeWallpaperDto>("set_theme_wallpaper_url_cmd", {
+      themeId,
+      url,
+      label,
+      opacity,
+    });
+    applyDtoToUi(dto);
+  } catch (err) {
+    console.error("No se pudo guardar el fondo:", err);
+    void alertDialog({
+      title: "No se pudo guardar el fondo",
+      message: String(err),
+    });
+  }
+}
+
+async function persistBackgroundOpacity(opacity: number): Promise<void> {
+  const themeId = getActiveTheme();
+  const { numeric, formatted } = clampAndFormatOpacity(opacity);
+  if (opacityValLabel) opacityValLabel.textContent = formatted;
+  applyBackgroundSettings(bgImageUrl, numeric);
+
+  try {
+    const dto = await invoke<ThemeWallpaperDto>("set_theme_wallpaper_opacity_cmd", {
+      themeId,
+      opacity: numeric,
+    });
+    bgImageUrl = dto.display_url || bgImageUrl;
+  } catch (err) {
+    console.error("No se pudo guardar la opacidad del fondo:", err);
   }
 }
 
@@ -478,21 +685,8 @@ function initSettings() {
   if (btnApplyBg) setButtonIcon(btnApplyBg, AppIcons.check, { size: 14, className: "icon--sm" });
   if (btnClearBg) setButtonIcon(btnClearBg, AppIcons.trash2, { size: 14, className: "icon--sm" });
 
-  // Cargar de localStorage
-  const savedBgUrl = localStorage.getItem(BG_URL_KEY) || "";
-  const savedOpacity = parseFloat(localStorage.getItem(BG_OPACITY_KEY) || "0.30");
-  const { numeric: validOpacity, formatted: formattedOpacity } = clampAndFormatOpacity(savedOpacity);
-
-  bgImageUrl = savedBgUrl;
-  // El campo muestra la etiqueta del archivo; una data URL no es legible ahí.
-  const savedLabel =
-    localStorage.getItem(BG_LABEL_KEY) || (savedBgUrl.startsWith("data:") ? "" : savedBgUrl);
-
-  if (configBgUrlInput) configBgUrlInput.value = savedLabel;
-  if (configBgOpacityInput) configBgOpacityInput.value = validOpacity.toString();
-  if (opacityValLabel) opacityValLabel.textContent = formattedOpacity;
-
-  applyBackgroundSettings(savedBgUrl, validOpacity);
+  // Sincronizar controles del popover con el wallpaper del tema (refs DOM ya listas)
+  void applyThemeWallpaper(getActiveTheme());
 
   // --- Exploración y acciones de Editor Preferido ---
   btnBrowseEditor?.addEventListener("click", () => {
@@ -518,23 +712,27 @@ function initSettings() {
 
   fileInputBg?.addEventListener("change", () => {
     if (fileInputBg.files && fileInputBg.files.length > 0) {
-      const selectedFile = fileInputBg.files[0];
+      const selectedFile = fileInputBg.files[0] as File & { path?: string };
       const label = selectedFile.name;
       if (configBgUrlInput) configBgUrlInput.value = label;
 
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const dataUrl = ev.target?.result as string;
-        if (!dataUrl) return;
-        persistBackground(dataUrl, label);
-      };
-      reader.onerror = () => {
+      const diskPath = selectedFile.path;
+      if (diskPath) {
+        void persistBackgroundFromFile(diskPath, label);
+        return;
+      }
+
+      // Fallback: bytes vía IPC (sin data URL en storage)
+      void selectedFile.arrayBuffer().then((buf) => {
+        const ext = label.includes(".") ? label.split(".").pop() || "png" : "png";
+        void persistBackgroundFromBytes(new Uint8Array(buf), ext, label);
+      }).catch((err) => {
+        console.error("No se pudo leer la imagen:", err);
         void alertDialog({
           title: "No se pudo leer la imagen",
           message: "El archivo seleccionado no se pudo abrir. Intenta con otra imagen.",
         });
-      };
-      reader.readAsDataURL(selectedFile);
+      });
     }
   });
 
@@ -542,10 +740,10 @@ function initSettings() {
     const result = resolveBackgroundApply(configBgUrlInput?.value || "", bgImageUrl);
     switch (result.action) {
       case "clear":
-        persistBackground("", "");
+        void persistBackgroundUrl("", "");
         break;
       case "set":
-        persistBackground(result.url, result.url);
+        void persistBackgroundUrl(result.url, result.url);
         break;
       case "keep":
         applyBackgroundSettings(bgImageUrl, currentBgOpacity());
@@ -562,15 +760,12 @@ function initSettings() {
 
   btnClearBg?.addEventListener("click", () => {
     if (configBgUrlInput) configBgUrlInput.value = "";
-    persistBackground("", "");
+    void persistBackgroundUrl("", "");
   });
 
   configBgOpacityInput?.addEventListener("input", (e) => {
     const target = e.target as HTMLInputElement;
-    const { numeric: opacity, formatted } = clampAndFormatOpacity(parseFloat(target.value));
-    if (opacityValLabel) opacityValLabel.textContent = formatted;
-    localStorage.setItem(BG_OPACITY_KEY, opacity.toString());
-    applyBackgroundSettings(bgImageUrl, opacity);
+    void persistBackgroundOpacity(parseFloat(target.value));
   });
 
   void loadPreferredEditorIntoUi();
@@ -1319,7 +1514,11 @@ function initExternalEditListeners() {
 
 // --- DOM Loaded Listener ---
 window.addEventListener("DOMContentLoaded", () => {
-  applyTheme(getActiveTheme());
+  // Migrar localStorage → SQLite/disco, luego aplicar tema (incluye wallpaper).
+  void (async () => {
+    await migrateWallpapersFromLocalStorageIfNeeded();
+    applyTheme(getActiveTheme());
+  })();
   // Inhabilitar menú contextual nativo del navegador en todo el documento
   document.addEventListener("contextmenu", (e) => e.preventDefault());
 

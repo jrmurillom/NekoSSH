@@ -13,6 +13,7 @@ mod path_util;
 mod osc7; // tests unitarios del parser; sync de producto fuera de alcance
 pub mod preferences;
 pub mod snippets;
+pub mod theme_wallpapers;
 pub mod edit_util;
 pub mod edit_session;
 pub mod fake_sftp;
@@ -29,6 +30,7 @@ use external_edit::{
     sftp_copy_between_sessions, sftp_read_remote_history_paged,
 };
 use preferences::ensure_app_preferences_schema;
+use theme_wallpapers::ThemeWallpaperDto;
 
 // --- State: UNA Session SSH por terminal (PTY + SFTP como canales) ---
 /// Session compartida: channel PTY + sftp() como canal aparte.
@@ -97,7 +99,92 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
     ensure_connection_folders_schema(conn)?;
     ensure_app_preferences_schema(conn)?;
     snippets::ensure_snippets_schema(conn)?;
+    theme_wallpapers::ensure_theme_wallpapers_schema(conn)?;
     Ok(())
+}
+
+fn app_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
+    app.path()
+        .app_data_dir()
+        .map_err(|e| format!("No se pudo resolver app_data_dir: {}", e))
+}
+
+#[tauri::command]
+fn get_theme_wallpaper_cmd(app: AppHandle, theme_id: String) -> Result<ThemeWallpaperDto, String> {
+    let conn = get_db_conn(&app)?;
+    let data = app_data_dir(&app)?;
+    theme_wallpapers::get_theme_wallpaper(&conn, &data, &theme_id)
+}
+
+#[tauri::command]
+fn set_theme_wallpaper_file_cmd(
+    app: AppHandle,
+    theme_id: String,
+    source_path: String,
+    label: String,
+    opacity: f64,
+) -> Result<ThemeWallpaperDto, String> {
+    let conn = get_db_conn(&app)?;
+    let data = app_data_dir(&app)?;
+    theme_wallpapers::set_theme_wallpaper_file(&conn, &data, &theme_id, &source_path, &label, opacity)
+}
+
+#[tauri::command]
+fn set_theme_wallpaper_bytes_cmd(
+    app: AppHandle,
+    theme_id: String,
+    bytes: Vec<u8>,
+    ext: String,
+    label: String,
+    opacity: f64,
+) -> Result<ThemeWallpaperDto, String> {
+    let conn = get_db_conn(&app)?;
+    let data = app_data_dir(&app)?;
+    theme_wallpapers::set_theme_wallpaper_bytes(&conn, &data, &theme_id, &bytes, &ext, &label, opacity)
+}
+
+#[tauri::command]
+fn set_theme_wallpaper_data_url_cmd(
+    app: AppHandle,
+    theme_id: String,
+    data_url: String,
+    label: String,
+    opacity: f64,
+) -> Result<ThemeWallpaperDto, String> {
+    let conn = get_db_conn(&app)?;
+    let data = app_data_dir(&app)?;
+    theme_wallpapers::set_theme_wallpaper_data_url(&conn, &data, &theme_id, &data_url, &label, opacity)
+}
+
+#[tauri::command]
+fn set_theme_wallpaper_url_cmd(
+    app: AppHandle,
+    theme_id: String,
+    url: String,
+    label: String,
+    opacity: f64,
+) -> Result<ThemeWallpaperDto, String> {
+    let conn = get_db_conn(&app)?;
+    let data = app_data_dir(&app)?;
+    theme_wallpapers::set_theme_wallpaper_url(&conn, &data, &theme_id, &url, &label, opacity)
+}
+
+#[tauri::command]
+fn set_theme_wallpaper_opacity_cmd(
+    app: AppHandle,
+    theme_id: String,
+    opacity: f64,
+) -> Result<ThemeWallpaperDto, String> {
+    let conn = get_db_conn(&app)?;
+    let data = app_data_dir(&app)?;
+    theme_wallpapers::set_theme_wallpaper_opacity(&conn, &data, &theme_id, opacity)
+}
+
+#[tauri::command]
+fn clear_theme_wallpaper_cmd(app: AppHandle, theme_id: String) -> Result<(), String> {
+    let conn = get_db_conn(&app)?;
+    let data = app_data_dir(&app)?;
+    theme_wallpapers::clear_theme_wallpaper(&conn, &data, &theme_id)
 }
 
 /// Idempotent: renombra `key_path` → `private_key` en DBs existentes / tests con 001.
@@ -1316,6 +1403,12 @@ pub fn run() {
             sql: include_str!("../migrations/005_auth_private_key.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 6,
+            description: "theme_wallpapers",
+            sql: include_str!("../migrations/006_theme_wallpapers.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     let (edit_sessions, edit_watchers) = manage_edit_state();
@@ -1375,7 +1468,14 @@ pub fn run() {
             create_snippet_cmd,
             update_snippet_cmd,
             delete_snippet_cmd,
-            ensure_snippet_seed_cmd
+            ensure_snippet_seed_cmd,
+            get_theme_wallpaper_cmd,
+            set_theme_wallpaper_file_cmd,
+            set_theme_wallpaper_bytes_cmd,
+            set_theme_wallpaper_data_url_cmd,
+            set_theme_wallpaper_url_cmd,
+            set_theme_wallpaper_opacity_cmd,
+            clear_theme_wallpaper_cmd
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
