@@ -29,6 +29,7 @@
         <div class="sidebar-tabs">
           <button id="tab-btn-servers" class="sidebar-tab-btn active">Servidores</button>
           <button id="tab-btn-files" class="sidebar-tab-btn">Archivos</button>
+          <button id="tab-btn-monitor" class="sidebar-tab-btn">Monitor</button>
         </div>
 
         <!-- Contenedor del panel activo -->
@@ -80,6 +81,109 @@
                 <span class="explorer-dropzone-icon">📥</span>
                 <span class="explorer-dropzone-text">Soltar para subir a</span>
                 <span class="explorer-dropzone-path" id="explorer-dropzone-path">/</span>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Panel de Monitor de Recursos -->
+          <div id="panel-monitor" class="sidebar-panel">
+            <div id="monitor-empty" class="profile-list-empty">Conecta un servidor para ver los recursos del sistema en tiempo real.</div>
+            
+            <div id="monitor-content" style="display: none; padding: 4px;">
+              <div class="monitor-server-info">
+                <div class="monitor-server-label">Servidor Monitoreado:</div>
+                <div class="monitor-server-name">
+                  <span class="pulse-dot"></span> <span id="monitor-server-name-text">Ninguno</span>
+                </div>
+                <div class="monitor-server-meta">
+                  <span><span id="monitor-icon-os"></span> OS: <span id="monitor-os-text">--</span></span>
+                  <span><span id="monitor-icon-uptime"></span> Up: <span id="monitor-uptime-text">--</span></span>
+                </div>
+              </div>
+
+              <!-- Métrica: CPU -->
+              <div class="monitor-metric-block">
+                <div class="metric-header">
+                  <span class="metric-title" style="color: var(--color-accent-primary);"><span id="monitor-icon-cpu"></span> CPU</span>
+                  <span class="metric-value" id="monitor-cpu-value">--%</span>
+                </div>
+                <div class="sparkline-canvas-container">
+                  <canvas id="canvas-cpu" class="sparkline-canvas"></canvas>
+                </div>
+                <div class="monitor-meta">
+                  <span>Carga: <span id="monitor-cpu-load">--</span></span>
+                  <span>Núcleos: <span id="monitor-cpu-cores">--</span></span>
+                </div>
+              </div>
+
+              <!-- Métrica: RAM -->
+              <div class="monitor-metric-block">
+                <div class="metric-header">
+                  <span class="metric-title" style="color: var(--color-accent-secondary);"><span id="monitor-icon-ram"></span> RAM</span>
+                  <span class="metric-value" id="monitor-ram-value">--%</span>
+                </div>
+                <div class="sparkline-canvas-container">
+                  <canvas id="canvas-ram" class="sparkline-canvas"></canvas>
+                </div>
+                <div class="monitor-meta">
+                  <span id="monitor-ram-detail">-- GB / -- GB</span>
+                  <span>Libre: <span id="monitor-ram-free">-- GB</span></span>
+                </div>
+              </div>
+
+              <!-- Métrica: DISCO -->
+              <div class="monitor-metric-block">
+                <div class="metric-header">
+                  <span class="metric-title" style="color: var(--color-accent-tertiary);"><span id="monitor-icon-disk"></span> DISCO</span>
+                  <span class="metric-value" id="monitor-disk-value">--%</span>
+                </div>
+                <div class="bar-bg">
+                  <div id="monitor-disk-fill" class="bar-fill disk-fill" style="width: 0%;"></div>
+                </div>
+                <div class="monitor-meta">
+                  <span id="monitor-disk-detail">-- GB / -- GB</span>
+                  <span>Ruta: /</span>
+                </div>
+              </div>
+
+              <!-- Métrica: RED -->
+              <div class="monitor-metric-block">
+                <div class="metric-header" style="margin-bottom: 4px;">
+                  <span class="metric-title" style="color: var(--color-accent-secondary);"><span id="monitor-icon-net"></span> RED</span>
+                </div>
+                <div class="net-io-grid">
+                  <div class="net-io-box">
+                    <span class="net-io-dir"><span id="monitor-icon-net-down"></span> Descarga</span>
+                    <span class="net-io-speed" id="monitor-net-down">-- KB/s</span>
+                  </div>
+                  <div class="net-io-box">
+                    <span class="net-io-dir"><span id="monitor-icon-net-up"></span> Subida</span>
+                    <span class="net-io-speed" id="monitor-net-up">-- KB/s</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Bloque: TOP PROCESOS -->
+              <div class="processes-block">
+                <div class="processes-title">
+                  <span><span id="monitor-icon-processes"></span> Top Procesos</span>
+                  <span style="font-size: 0.65rem; color: var(--color-text-muted);">Por CPU</span>
+                </div>
+                <div class="processes-list" id="monitor-processes-list">
+                  <div class="profile-list-empty">Esperando datos...</div>
+                </div>
+              </div>
+
+              <!-- Controles -->
+              <div class="monitor-controls">
+                <select id="monitor-interval-select" class="monitor-interval" autocomplete="off">
+                  <option value="2000">Frecuencia: 2s</option>
+                  <option value="5000" selected>Frecuencia: 5s</option>
+                  <option value="10000">Frecuencia: 10s</option>
+                </select>
+                <button type="button" id="btn-monitor-pause" class="btn-pause">
+                  <span id="monitor-icon-pause"></span> <span id="btn-monitor-pause-text">Pausar</span>
+                </button>
               </div>
             </div>
           </div>

@@ -363,8 +363,45 @@ let existingPrivateKeyContent: string | null = null;
 // Tabs sidebar
 let tabBtnServers: HTMLButtonElement | null = null;
 let tabBtnFiles: HTMLButtonElement | null = null;
+let tabBtnMonitor: HTMLButtonElement | null = null;
 let panelServers: HTMLElement | null = null;
 let panelFiles: HTMLElement | null = null;
+let panelMonitor: HTMLElement | null = null;
+
+// Monitor elements
+let monitorEmpty: HTMLElement | null = null;
+let monitorContent: HTMLElement | null = null;
+let monitorServerNameText: HTMLElement | null = null;
+let monitorCpuValue: HTMLElement | null = null;
+let monitorCpuLoad: HTMLElement | null = null;
+let monitorCpuCores: HTMLElement | null = null;
+let monitorRamValue: HTMLElement | null = null;
+let monitorRamDetail: HTMLElement | null = null;
+let monitorRamFree: HTMLElement | null = null;
+let monitorDiskValue: HTMLElement | null = null;
+let monitorDiskFill: HTMLElement | null = null;
+let monitorDiskDetail: HTMLElement | null = null;
+let monitorIntervalSelect: HTMLSelectElement | null = null;
+let btnMonitorPause: HTMLButtonElement | null = null;
+let monitorOsText: HTMLElement | null = null;
+let monitorUptimeText: HTMLElement | null = null;
+let monitorNetDown: HTMLElement | null = null;
+let monitorNetUp: HTMLElement | null = null;
+let monitorProcessesList: HTMLElement | null = null;
+let monitorBtnPauseText: HTMLElement | null = null;
+
+// Network speed deltas
+let lastNetRecv: number = 0;
+let lastNetSent: number = 0;
+let lastNetTime: number = 0;
+
+// Sparkline states
+let cpuHistory: number[] = Array(30).fill(0);
+let ramHistory: number[] = Array(30).fill(0);
+let prevCpuActive: number = 0;
+let prevCpuTotal: number = 0;
+let monitorTimerId: any = null;
+let isMonitorPaused: boolean = false;
 
 // File explorer (Fase 2)
 let filesEmpty: HTMLElement | null = null;
@@ -855,8 +892,33 @@ function applyBackgroundSettings(url: string, opacity: number) {
 function initTabs() {
   tabBtnServers = document.getElementById("tab-btn-servers") as HTMLButtonElement;
   tabBtnFiles = document.getElementById("tab-btn-files") as HTMLButtonElement;
+  tabBtnMonitor = document.getElementById("tab-btn-monitor") as HTMLButtonElement;
   panelServers = document.getElementById("panel-servers");
   panelFiles = document.getElementById("panel-files");
+  panelMonitor = document.getElementById("panel-monitor");
+
+  // Monitor DOM
+  monitorEmpty = document.getElementById("monitor-empty");
+  monitorContent = document.getElementById("monitor-content");
+  monitorServerNameText = document.getElementById("monitor-server-name-text");
+  monitorCpuValue = document.getElementById("monitor-cpu-value");
+  monitorCpuLoad = document.getElementById("monitor-cpu-load");
+  monitorCpuCores = document.getElementById("monitor-cpu-cores");
+  monitorRamValue = document.getElementById("monitor-ram-value");
+  monitorRamDetail = document.getElementById("monitor-ram-detail");
+  monitorRamFree = document.getElementById("monitor-ram-free");
+  monitorDiskValue = document.getElementById("monitor-disk-value");
+  monitorDiskFill = document.getElementById("monitor-disk-fill");
+  monitorDiskDetail = document.getElementById("monitor-disk-detail");
+  monitorIntervalSelect = document.getElementById("monitor-interval-select") as HTMLSelectElement;
+  btnMonitorPause = document.getElementById("btn-monitor-pause") as HTMLButtonElement;
+  monitorOsText = document.getElementById("monitor-os-text");
+  monitorUptimeText = document.getElementById("monitor-uptime-text");
+  monitorNetDown = document.getElementById("monitor-net-down");
+  monitorNetUp = document.getElementById("monitor-net-up");
+  monitorProcessesList = document.getElementById("monitor-processes-list");
+  monitorBtnPauseText = document.getElementById("btn-monitor-pause-text");
+
   filesEmpty = document.getElementById("files-empty");
   filesToolbar = document.getElementById("files-toolbar");
   filesCwdInput = document.getElementById("files-cwd-input") as HTMLInputElement;
@@ -883,16 +945,33 @@ function initTabs() {
   tabBtnServers?.addEventListener("click", () => {
     tabBtnServers?.classList.add("active");
     tabBtnFiles?.classList.remove("active");
+    tabBtnMonitor?.classList.remove("active");
     panelServers?.classList.add("active");
     panelFiles?.classList.remove("active");
+    panelMonitor?.classList.remove("active");
+    stopMonitorInterval();
   });
 
   tabBtnFiles?.addEventListener("click", () => {
     tabBtnFiles?.classList.add("active");
     tabBtnServers?.classList.remove("active");
+    tabBtnMonitor?.classList.remove("active");
     panelFiles?.classList.add("active");
     panelServers?.classList.remove("active");
+    panelMonitor?.classList.remove("active");
+    stopMonitorInterval();
     void refreshExplorerForActiveTerminal();
+  });
+
+  tabBtnMonitor?.addEventListener("click", () => {
+    tabBtnMonitor?.classList.add("active");
+    tabBtnServers?.classList.remove("active");
+    tabBtnFiles?.classList.remove("active");
+    panelMonitor?.classList.add("active");
+    panelServers?.classList.remove("active");
+    panelFiles?.classList.remove("active");
+    
+    initMonitorTab();
   });
 
   btnFilesUp?.addEventListener("click", () => {
@@ -2058,6 +2137,11 @@ function renderProfileList() {
     const expanded = expandedFolderIds.has(folderId);
     const children = currentProfiles.filter((p) => p.folder_id === folderId);
 
+    // Omitir si es la carpeta General y está vacía
+    if (folder.name === "General" && children.length === 0) {
+      continue;
+    }
+
     const block = document.createElement("div");
     block.className = "folder-block";
     block.dataset.folderId = String(folderId);
@@ -2842,6 +2926,10 @@ function switchActiveTerminal(terminalId: string) {
   if (panelFiles?.classList.contains("active")) {
     void refreshExplorerForActiveTerminal();
   }
+
+  if (panelMonitor?.classList.contains("active")) {
+    checkMonitorSessionState();
+  }
 }
 
 async function closeTerminalSession(terminalId: string, skipConfirm = false) {
@@ -2900,6 +2988,10 @@ async function closeTerminalSession(terminalId: string, skipConfirm = false) {
     if (welcomeScreen) {
       (welcomeScreen as HTMLElement).style.display = "flex";
     }
+  }
+
+  if (panelMonitor?.classList.contains("active")) {
+    checkMonitorSessionState();
   }
 }
 
@@ -3138,5 +3230,420 @@ async function injectHistoryCommand(command: string, execute: boolean) {
     terminalId: term.focusedTerminalId,
     data,
   });
+}
+
+// --- Resource Monitor Logic ---
+function initMonitorIcons() {
+  if (tabBtnMonitor && !tabBtnMonitor.querySelector("svg")) {
+    tabBtnMonitor.prepend(icon(AppIcons.activity, { size: 14, className: "icon--sm" }));
+  }
+
+  const osSlot = document.getElementById("monitor-icon-os");
+  if (osSlot && !osSlot.hasChildNodes()) osSlot.appendChild(icon(AppIcons.server, { size: 12 }));
+
+  const uptimeSlot = document.getElementById("monitor-icon-uptime");
+  if (uptimeSlot && !uptimeSlot.hasChildNodes()) uptimeSlot.appendChild(icon(AppIcons.clock, { size: 12 }));
+
+  const cpuSlot = document.getElementById("monitor-icon-cpu");
+  if (cpuSlot && !cpuSlot.hasChildNodes()) cpuSlot.appendChild(icon(AppIcons.cpu, { size: 14 }));
+
+  const ramSlot = document.getElementById("monitor-icon-ram");
+  if (ramSlot && !ramSlot.hasChildNodes()) ramSlot.appendChild(icon(AppIcons.database, { size: 14 }));
+
+  const diskSlot = document.getElementById("monitor-icon-disk");
+  if (diskSlot && !diskSlot.hasChildNodes()) diskSlot.appendChild(icon(AppIcons.hardDrive, { size: 14 }));
+
+  const netSlot = document.getElementById("monitor-icon-net");
+  if (netSlot && !netSlot.hasChildNodes()) netSlot.appendChild(icon(AppIcons.network, { size: 14 }));
+
+  const netDownSlot = document.getElementById("monitor-icon-net-down");
+  if (netDownSlot && !netDownSlot.hasChildNodes()) {
+    netDownSlot.appendChild(icon(AppIcons.arrowUp, { size: 10, className: "icon-rotate-180" }));
+  }
+
+  const netUpSlot = document.getElementById("monitor-icon-net-up");
+  if (netUpSlot && !netUpSlot.hasChildNodes()) netUpSlot.appendChild(icon(AppIcons.arrowUp, { size: 10 }));
+
+  const procSlot = document.getElementById("monitor-icon-processes");
+  if (procSlot && !procSlot.hasChildNodes()) procSlot.appendChild(icon(AppIcons.crown, { size: 14 }));
+
+  updatePauseButtonVisuals();
+}
+
+function updatePauseButtonVisuals() {
+  if (monitorBtnPauseText) {
+    monitorBtnPauseText.textContent = isMonitorPaused ? "Reanudar" : "Pausar";
+  }
+  const pauseSlot = document.getElementById("monitor-icon-pause");
+  if (pauseSlot) {
+    pauseSlot.replaceChildren(icon(isMonitorPaused ? AppIcons.play : AppIcons.pause, { size: 12 }));
+  }
+  if (btnMonitorPause) {
+    if (isMonitorPaused) {
+      btnMonitorPause.style.background = "rgba(57, 255, 20, 0.1)";
+      btnMonitorPause.style.borderColor = "var(--color-success)";
+      btnMonitorPause.style.color = "var(--color-success)";
+    } else {
+      btnMonitorPause.style.background = "";
+      btnMonitorPause.style.borderColor = "";
+      btnMonitorPause.style.color = "";
+    }
+  }
+}
+
+function initMonitorTab() {
+  initMonitorIcons();
+
+  if (monitorIntervalSelect && !monitorIntervalSelect.dataset.listenerBound) {
+    monitorIntervalSelect.addEventListener("change", () => {
+      startMonitorInterval();
+    });
+    monitorIntervalSelect.dataset.listenerBound = "true";
+  }
+
+  if (btnMonitorPause && !btnMonitorPause.dataset.listenerBound) {
+    btnMonitorPause.addEventListener("click", () => {
+      isMonitorPaused = !isMonitorPaused;
+      updatePauseButtonVisuals();
+    });
+    btnMonitorPause.dataset.listenerBound = "true";
+  }
+
+  checkMonitorSessionState();
+}
+
+function checkMonitorSessionState() {
+  const termId = currentActiveTerminalId;
+  const activeTerm = termId ? activeTerminals.get(termId) : undefined;
+
+  if (!activeTerm) {
+    if (monitorEmpty) monitorEmpty.style.display = "block";
+    if (monitorContent) monitorContent.style.display = "none";
+    stopMonitorInterval();
+  } else {
+    if (monitorEmpty) monitorEmpty.style.display = "none";
+    if (monitorContent) monitorContent.style.display = "block";
+    if (monitorServerNameText) {
+      monitorServerNameText.textContent = activeTerm.profileName || activeTerm.profile.name || "Servidor remoto";
+    }
+    if (monitorTimerId === null) {
+      cpuHistory = Array(30).fill(0);
+      ramHistory = Array(30).fill(0);
+      prevCpuActive = 0;
+      prevCpuTotal = 0;
+      lastNetRecv = 0;
+      lastNetSent = 0;
+      lastNetTime = 0;
+      void updateMonitor();
+      startMonitorInterval();
+    }
+  }
+}
+
+function startMonitorInterval() {
+  stopMonitorInterval();
+  const ms = monitorIntervalSelect ? parseInt(monitorIntervalSelect.value) : 5000;
+  monitorTimerId = setInterval(() => {
+    void updateMonitor();
+  }, ms);
+}
+
+function stopMonitorInterval() {
+  if (monitorTimerId !== null) {
+    clearInterval(monitorTimerId);
+    monitorTimerId = null;
+  }
+}
+
+async function updateMonitor() {
+  if (isMonitorPaused) return;
+
+  const termId = currentActiveTerminalId;
+  const activeTerm = termId ? activeTerminals.get(termId) : undefined;
+  if (!activeTerm) {
+    stopMonitorInterval();
+    return;
+  }
+
+  try {
+    const rawData = await invoke<string>("get_remote_sys_info", { terminalId: activeTerm.id });
+    parseAndUpdateMonitorData(rawData);
+  } catch (err) {
+    console.error("Error al obtener información de monitor:", err);
+    if (monitorCpuValue) monitorCpuValue.textContent = "N/A";
+    if (monitorRamValue) monitorRamValue.textContent = "N/A";
+    if (monitorDiskValue) monitorDiskValue.textContent = "N/A";
+  }
+}
+
+function formatUptime(uptimeSec: number): string {
+  const d = Math.floor(uptimeSec / (3600 * 24));
+  const h = Math.floor((uptimeSec % (3600 * 24)) / 3600);
+  const m = Math.floor((uptimeSec % 3600) / 60);
+  if (d > 0) {
+    return `${d}d ${h}h ${m}m`;
+  } else if (h > 0) {
+    return `${h}h ${m}m`;
+  } else {
+    return `${m}m`;
+  }
+}
+
+function formatNetSpeed(bytesPerSec: number): string {
+  if (bytesPerSec < 0) bytesPerSec = 0;
+  if (bytesPerSec >= 1024 * 1024) {
+    return `${(bytesPerSec / (1024 * 1024)).toFixed(1)} MB/s`;
+  } else if (bytesPerSec >= 1024) {
+    return `${(bytesPerSec / 1024).toFixed(1)} KB/s`;
+  } else {
+    return `${Math.round(bytesPerSec)} B/s`;
+  }
+}
+
+function parseAndUpdateMonitorData(raw: string) {
+  const lines = raw.split("\n").map(l => l.trim()).filter(Boolean);
+
+  let cpuLine = "";
+  let ramLine = "";
+  let diskLine = "";
+  let uptimeLine = "";
+  const netDevLines: string[] = [];
+  const psLines: string[] = [];
+  let readingPs = false;
+
+  for (const line of lines) {
+    // Determine which section we are in
+    if (line.startsWith("cpu ")) {
+      cpuLine = line;
+    } else if (line.startsWith("Mem:")) {
+      ramLine = line;
+    } else if (line.includes(" /") && (line.startsWith("/") || line.match(/^[a-zA-Z0-9]/)) && !line.includes("%CPU")) {
+      diskLine = line;
+    } else if (line.match(/^\d+\.\d+\s+\d+\.\d+$/)) {
+      uptimeLine = line;
+    } else if (line.includes(":")) {
+      netDevLines.push(line);
+    } else if (line.includes("%CPU") || readingPs) {
+      readingPs = true;
+      psLines.push(line);
+    }
+  }
+
+  // Backup uptime parsing if it didn't match the regex perfectly
+  if (!uptimeLine) {
+    const firstLine = lines[0];
+    if (firstLine && firstLine.match(/^\d+(\.\d+)?\s+\d+/)) {
+      uptimeLine = firstLine;
+    }
+  }
+
+  // 1. Process CPU
+  if (cpuLine) {
+    const parts = cpuLine.split(/\s+/).slice(1).map(Number);
+    if (parts.length >= 7) {
+      const active = parts[0] + parts[1] + parts[2] + parts[5] + parts[6];
+      const total = active + parts[3] + parts[4];
+
+      if (prevCpuTotal > 0) {
+        const activeDelta = active - prevCpuActive;
+        const totalDelta = total - prevCpuTotal;
+        const cpuPercent = totalDelta > 0 ? Math.round((activeDelta * 100) / totalDelta) : 0;
+        const clampedCpu = Math.max(0, Math.min(100, cpuPercent));
+
+        cpuHistory.shift();
+        cpuHistory.push(clampedCpu);
+
+        if (monitorCpuValue) monitorCpuValue.textContent = `${clampedCpu}%`;
+        if (monitorCpuLoad) monitorCpuLoad.textContent = (clampedCpu / 100).toFixed(2);
+      }
+      prevCpuActive = active;
+      prevCpuTotal = total;
+    }
+  }
+
+  const cores = lines.filter(l => l.match(/^cpu\d+\s+/)).length;
+  if (monitorCpuCores) monitorCpuCores.textContent = cores > 0 ? String(cores) : "1";
+
+  // 2. Process RAM
+  if (ramLine) {
+    const parts = ramLine.split(/\s+/);
+    if (parts.length >= 3) {
+      const totalBytes = Number(parts[1]);
+      const usedBytes = Number(parts[2]);
+      
+      const ramPercent = totalBytes > 0 ? Math.round((usedBytes * 100) / totalBytes) : 0;
+      const clampedRam = Math.max(0, Math.min(100, ramPercent));
+
+      ramHistory.shift();
+      ramHistory.push(clampedRam);
+
+      const totalGB = (totalBytes / (1024 * 1024 * 1024)).toFixed(1);
+      const usedGB = (usedBytes / (1024 * 1024 * 1024)).toFixed(1);
+      const freeGB = ((totalBytes - usedBytes) / (1024 * 1024 * 1024)).toFixed(1);
+
+      if (monitorRamValue) monitorRamValue.textContent = `${clampedRam}%`;
+      if (monitorRamDetail) monitorRamDetail.textContent = `${usedGB} GB / ${totalGB} GB`;
+      if (monitorRamFree) monitorRamFree.textContent = `${freeGB} GB`;
+    }
+  }
+
+  // 3. Process Disk
+  if (diskLine) {
+    const parts = diskLine.split(/\s+/);
+    if (parts.length >= 3) {
+      const totalBytes = Number(parts[1]);
+      const usedBytes = Number(parts[2]);
+
+      const diskPercent = totalBytes > 0 ? Math.round((usedBytes * 100) / totalBytes) : 0;
+      const clampedDisk = Math.max(0, Math.min(100, diskPercent));
+
+      const totalGB = (totalBytes / (1024 * 1024 * 1024)).toFixed(1);
+      const usedGB = (usedBytes / (1024 * 1024 * 1024)).toFixed(1);
+
+      if (monitorDiskValue) monitorDiskValue.textContent = `${clampedDisk}%`;
+      if (monitorDiskFill) monitorDiskFill.style.width = `${clampedDisk}%`;
+      if (monitorDiskDetail) monitorDiskDetail.textContent = `${usedGB} GB / ${totalGB} GB`;
+    }
+  }
+
+  // 4. Process OS & Uptime
+  if (monitorOsText) monitorOsText.textContent = "Linux";
+  if (uptimeLine) {
+    const sec = parseFloat(uptimeLine.split(/\s+/)[0]);
+    if (!isNaN(sec) && monitorUptimeText) {
+      monitorUptimeText.textContent = formatUptime(sec);
+    }
+  }
+
+  // 5. Process Network
+  let totalRecv = 0;
+  let totalSent = 0;
+  for (const netLine of netDevLines) {
+    const parts = netLine.split(":");
+    if (parts.length >= 2) {
+      const iface = parts[0].trim();
+      if (iface !== "lo") {
+        const stats = parts[1].trim().split(/\s+/).map(Number);
+        if (stats.length >= 9) {
+          totalRecv += stats[0] || 0;
+          totalSent += stats[8] || 0;
+        }
+      }
+    }
+  }
+
+  const now = Date.now();
+  if (lastNetTime > 0) {
+    const timeDeltaSec = (now - lastNetTime) / 1000;
+    if (timeDeltaSec > 0) {
+      const recvSpeed = (totalRecv - lastNetRecv) / timeDeltaSec;
+      const sentSpeed = (totalSent - lastNetSent) / timeDeltaSec;
+
+      if (monitorNetDown) monitorNetDown.textContent = formatNetSpeed(recvSpeed);
+      if (monitorNetUp) monitorNetUp.textContent = formatNetSpeed(sentSpeed);
+    }
+  }
+  lastNetRecv = totalRecv;
+  lastNetSent = totalSent;
+  lastNetTime = now;
+
+  // 6. Process Top Processes
+  if (monitorProcessesList && psLines.length > 1) {
+    monitorProcessesList.innerHTML = "";
+    // Skip header line
+    const rows = psLines.slice(1).map(r => r.trim()).filter(Boolean);
+    let count = 0;
+    for (const r of rows) {
+      const cols = r.split(/\s+/);
+      if (cols.length >= 3) {
+        const cpuVal = cols[0];
+        const memVal = cols[1];
+        const cmdVal = cols.slice(2).join(" ");
+        
+        const rowEl = document.createElement("div");
+        rowEl.className = "proc-row";
+
+        const nameEl = document.createElement("span");
+        nameEl.className = "proc-name";
+        nameEl.textContent = cmdVal;
+        nameEl.setAttribute("title", cmdVal);
+
+        const badgesEl = document.createElement("div");
+        badgesEl.className = "proc-stat-badges";
+
+        const cpuBadge = document.createElement("span");
+        cpuBadge.className = "proc-badge";
+        cpuBadge.textContent = `${cpuVal}% C`;
+
+        const memBadge = document.createElement("span");
+        memBadge.className = "proc-badge cyan";
+        memBadge.textContent = `${memVal}% M`;
+
+        badgesEl.appendChild(cpuBadge);
+        badgesEl.appendChild(memBadge);
+        rowEl.appendChild(nameEl);
+        rowEl.appendChild(badgesEl);
+
+        monitorProcessesList.appendChild(rowEl);
+        count++;
+        if (count >= 3) break; // Only top 3
+      }
+    }
+    if (count === 0) {
+      monitorProcessesList.innerHTML = '<div class="profile-list-empty">No hay procesos activos.</div>';
+    }
+  }
+
+  drawMonitorSparkline("canvas-cpu", cpuHistory, "rgba(255, 105, 180, 1)");
+  drawMonitorSparkline("canvas-ram", ramHistory, "rgba(0, 255, 255, 1)");
+}
+
+function drawMonitorSparkline(canvasId: string, history: number[], color: string) {
+  const canvas = document.getElementById(canvasId) as HTMLCanvasElement;
+  if (!canvas) return;
+
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * window.devicePixelRatio;
+  canvas.height = rect.height * window.devicePixelRatio;
+
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
+  ctx.clearRect(0, 0, rect.width, rect.height);
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.lineCap = "round";
+  ctx.lineJoin = "round";
+
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 4;
+
+  const gradient = ctx.createLinearGradient(0, 0, 0, rect.height);
+  const colorRgb = color.replace("1)", "0.15)");
+  gradient.addColorStop(0, colorRgb);
+  gradient.addColorStop(1, "rgba(0,0,0,0)");
+
+  ctx.beginPath();
+  const step = rect.width / (history.length - 1);
+  history.forEach((val, idx) => {
+    const x = idx * step;
+    const y = rect.height - (val / 100) * (rect.height - 10) - 5;
+    if (idx === 0) {
+      ctx.moveTo(x, y);
+    } else {
+      ctx.lineTo(x, y);
+    }
+  });
+  ctx.stroke();
+
+  ctx.shadowBlur = 0;
+
+  ctx.lineTo(rect.width, rect.height);
+  ctx.lineTo(0, rect.height);
+  ctx.closePath();
+  ctx.fillStyle = gradient;
+  ctx.fill();
 }
 

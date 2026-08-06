@@ -1082,6 +1082,36 @@ async fn close_ssh_session(
     Ok(())
 }
 
+#[tauri::command]
+async fn get_remote_sys_info(
+    app: AppHandle,
+    terminal_id: String,
+    state: tauri::State<'_, SshConnections>,
+) -> Result<String, String> {
+    let live_arc = {
+        let connections = state.0.lock().unwrap();
+        connections.get(&terminal_id).cloned()
+    };
+    let Some(live_arc) = live_arc else {
+        return Err("No active connection session found".to_string());
+    };
+
+    let cmd = "cat /proc/stat && free -b && df -B1 / && cat /proc/uptime && cat /proc/net/dev && (ps -eo %cpu,%mem,comm --sort=-%cpu | head -n 4 || true)";
+    let outcome = external_edit::exec_remote_command_blocking(
+        &app,
+        &terminal_id,
+        &live_arc,
+        cmd,
+        std::time::Duration::from_secs(3),
+    )?;
+
+    if outcome.exit_code != 0 {
+        return Err(format!("Command exited with error code {}: {}", outcome.exit_code, outcome.stderr));
+    }
+
+    Ok(outcome.stdout)
+}
+
 /// Cierra canal PTY + desconecta la Session. Best-effort; no propaga errores.
 fn shutdown_live_ssh(live: &mut LiveSsh) {
     let _ = live.channel.close();
@@ -1434,6 +1464,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             greet,
+            get_remote_sys_info,
             list_folders,
             create_folder,
             update_folder,

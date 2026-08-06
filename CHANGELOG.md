@@ -6,6 +6,19 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-08-06
+
+### Added
+
+- Pestaña "Monitor" en la barra lateral con visualización de recursos en tiempo real.
+- Gráficos Canvas dinámicos con efecto de brillo neón Cyber-Sakura para CPU y RAM.
+- Visualización de almacenamiento de Disco Duro con barra de progreso clásica.
+- Monitoreo en tiempo real de velocidad de red (descarga/subida) y deltas por segundo.
+- Módulo de "Top Procesos" ordenados por consumo de CPU con distintivos de memoria y carga.
+- Visualización de Uptime y Sistema Operativo del servidor remoto.
+- Integración nativa de la iconografía de Lucide (`Cpu`, `Database`, `HardDrive`, `Network`, `Clock`, `Server`, `Activity`, `Crown`, `Play`, `Pause`).
+- Controles de refresco (2s, 5s, 10s) y botón de pausa/reanudar interactivo.
+
 ## [0.1.1] - 2026-08-05
 
 ### Added

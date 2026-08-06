@@ -25,6 +25,16 @@ import {
   Check,
   Terminal,
   Clipboard,
+  Cpu,
+  Database,
+  HardDrive,
+  Network,
+  Clock,
+  Server,
+  Activity,
+  Crown,
+  Play,
+  Pause,
 } from "lucide";
 
 export type IconOptions = {
@@ -83,4 +93,14 @@ export const AppIcons = {
   check: Check,
   terminal: Terminal,
   clipboard: Clipboard,
+  cpu: Cpu,
+  database: Database,
+  hardDrive: HardDrive,
+  network: Network,
+  clock: Clock,
+  server: Server,
+  activity: Activity,
+  crown: Crown,
+  play: Play,
+  pause: Pause,
 } as const;

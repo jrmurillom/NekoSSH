@@ -2549,3 +2549,310 @@ input[type="range"]::-webkit-slider-thumb {
   --term-cyan: #ffe766;
   --term-white: #f5f0ff;
 }
+
+/* --- Resource Monitor Styles --- */
+#panel-monitor {
+  display: none;
+  flex-direction: column;
+  gap: 16px;
+}
+
+#panel-monitor.active {
+  display: flex;
+}
+
+.monitor-server-info {
+  background: rgba(var(--color-accent-primary-rgb), 0.05);
+  border: var(--glass-border);
+  border-radius: var(--border-radius-md, 8px);
+  padding: 10px;
+  font-size: 0.8rem;
+  margin-bottom: 8px;
+}
+
+.monitor-server-label {
+  color: var(--color-text-muted);
+  font-size: 0.75rem;
+}
+
+.monitor-server-name {
+  font-weight: 700;
+  color: var(--color-accent-light, var(--color-text-primary));
+  margin-top: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pulse-dot {
+  width: 8px;
+  height: 8px;
+  background: var(--color-success);
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 8px var(--color-success);
+  animation: monitorPulse 2s infinite;
+}
+
+@keyframes monitorPulse {
+  0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(57, 255, 20, 0.7); }
+  70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(57, 255, 20, 0); }
+  100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(57, 255, 20, 0); }
+}
+
+.monitor-metric-block {
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  padding: 12px 14px;
+  border-radius: var(--border-radius-md, 8px);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.15);
+  margin-bottom: 8px;
+}
+
+.metric-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.metric-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.metric-value {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+}
+
+.sparkline-canvas-container {
+  height: 50px;
+  position: relative;
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 4px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.03);
+}
+
+.sparkline-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.monitor-meta {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  margin-top: 6px;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+}
+
+.bar-bg {
+  height: 8px;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.bar-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: 4px;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.disk-fill {
+  background: linear-gradient(90deg, var(--color-accent-tertiary), rgba(var(--color-accent-tertiary-rgb), 0.6));
+  box-shadow: 0 0 8px rgba(var(--color-accent-tertiary-rgb), 0.5);
+}
+
+.monitor-controls {
+  margin-top: 12px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.05);
+  padding-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.monitor-interval {
+  background: rgba(12, 6, 13, 0.6);
+  border: 1px solid rgba(255, 105, 180, 0.25);
+  border-radius: 4px;
+  color: var(--color-text-primary);
+  font-size: 0.75rem;
+  padding: 4px 6px;
+  outline: none;
+}
+
+.btn-pause {
+  background: rgba(255, 105, 180, 0.1);
+  border: 1px solid var(--color-accent-primary);
+  color: var(--color-accent-primary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 4px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: var(--transition-normal, all 0.2s ease);
+}
+
+.btn-pause:hover {
+  background: var(--color-accent-primary);
+  color: #0c060d;
+}
+
+.monitor-server-meta {
+  font-size: 0.7rem;
+  color: var(--color-text-muted);
+  margin-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.monitor-server-meta span {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.monitor-server-meta svg {
+  width: 12px;
+  height: 12px;
+}
+
+.net-io-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.net-io-box {
+  background: rgba(0, 0, 0, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.02);
+  padding: 6px 10px;
+  border-radius: 6px;
+  display: flex;
+  flex-direction: column;
+}
+
+.net-io-dir {
+  font-size: 0.65rem;
+  color: var(--color-text-muted);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.net-io-dir svg {
+  width: 10px;
+  height: 10px;
+}
+
+.net-io-speed {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--color-accent-secondary);
+  margin-top: 2px;
+}
+
+.processes-block {
+  background: rgba(255, 255, 255, 0.01);
+  border: 1px solid rgba(255, 255, 255, 0.03);
+  padding: 12px 14px;
+  border-radius: var(--border-radius-md, 8px);
+  box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.15);
+  margin-bottom: 8px;
+}
+
+.processes-title {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--color-accent-light, var(--color-text-primary));
+  margin-bottom: 8px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.processes-title span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.processes-title svg {
+  width: 14px;
+  height: 14px;
+  color: var(--color-accent-primary);
+}
+
+.processes-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.proc-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+  padding: 4px 6px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.proc-name {
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+  color: var(--color-text-primary);
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.proc-stat-badges {
+  display: flex;
+  gap: 6px;
+  font-family: var(--font-mono, 'JetBrains Mono', monospace);
+}
+
+.proc-badge {
+  font-size: 0.65rem;
+  padding: 2px 4px;
+  border-radius: 3px;
+  background: rgba(255, 105, 180, 0.1);
+  color: var(--color-accent-primary);
+}
+
+.proc-badge.cyan {
+  background: rgba(0, 255, 255, 0.1);
+  color: var(--color-accent-secondary);
+}
+
+.btn-pause {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.btn-pause svg {
+  width: 12px;
+  height: 12px;
+}
+
+.metric-title svg {
+  width: 14px;
+  height: 14px;
+}
