@@ -3234,9 +3234,6 @@ async function injectHistoryCommand(command: string, execute: boolean) {
 
 // --- Resource Monitor Logic ---
 function initMonitorIcons() {
-  if (tabBtnMonitor && !tabBtnMonitor.querySelector("svg")) {
-    tabBtnMonitor.prepend(icon(AppIcons.activity, { size: 14, className: "icon--sm" }));
-  }
 
   const osSlot = document.getElementById("monitor-icon-os");
   if (osSlot && !osSlot.hasChildNodes()) osSlot.appendChild(icon(AppIcons.server, { size: 12 }));
