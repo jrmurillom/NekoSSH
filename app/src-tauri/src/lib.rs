@@ -18,6 +18,7 @@ pub mod edit_util;
 pub mod edit_session;
 pub mod fake_sftp;
 pub mod elevated_upload;
+pub mod notes;
 mod external_edit;
 
 use path_util::{join_remote_path, shell_quote};
@@ -100,6 +101,7 @@ fn init_schema(conn: &Connection) -> Result<(), String> {
     ensure_app_preferences_schema(conn)?;
     snippets::ensure_snippets_schema(conn)?;
     theme_wallpapers::ensure_theme_wallpapers_schema(conn)?;
+    notes::ensure_notes_schema(conn)?;
     Ok(())
 }
 
@@ -107,6 +109,30 @@ fn app_data_dir(app: &AppHandle) -> Result<std::path::PathBuf, String> {
     app.path()
         .app_data_dir()
         .map_err(|e| format!("No se pudo resolver app_data_dir: {}", e))
+}
+
+#[tauri::command]
+fn get_notes_cmd(app: AppHandle) -> Result<Vec<notes::NoteDto>, String> {
+    let conn = get_db_conn(&app)?;
+    notes::get_notes(&conn)
+}
+
+#[tauri::command]
+fn create_note_cmd(app: AppHandle, title: String, content: String) -> Result<notes::NoteDto, String> {
+    let conn = get_db_conn(&app)?;
+    notes::create_note(&conn, &title, &content)
+}
+
+#[tauri::command]
+fn update_note_cmd(app: AppHandle, id: i64, title: String, content: String) -> Result<(), String> {
+    let conn = get_db_conn(&app)?;
+    notes::update_note(&conn, id, &title, &content)
+}
+
+#[tauri::command]
+fn delete_note_cmd(app: AppHandle, id: i64) -> Result<(), String> {
+    let conn = get_db_conn(&app)?;
+    notes::delete_note(&conn, id)
 }
 
 #[tauri::command]
@@ -1439,6 +1465,12 @@ pub fn run() {
             sql: include_str!("../migrations/006_theme_wallpapers.sql"),
             kind: MigrationKind::Up,
         },
+        Migration {
+            version: 7,
+            description: "notes",
+            sql: include_str!("../migrations/007_notes.sql"),
+            kind: MigrationKind::Up,
+        },
     ];
 
     let (edit_sessions, edit_watchers) = manage_edit_state();
@@ -1500,6 +1532,10 @@ pub fn run() {
             update_snippet_cmd,
             delete_snippet_cmd,
             ensure_snippet_seed_cmd,
+            get_notes_cmd,
+            create_note_cmd,
+            update_note_cmd,
+            delete_note_cmd,
             get_theme_wallpaper_cmd,
             set_theme_wallpaper_file_cmd,
             set_theme_wallpaper_bytes_cmd,

@@ -6,7 +6,26 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
-## [0.1.3] - 2026-08-06
+## [0.1.4] - 2026-08-06
+
+### Added
+
+- **Pestaña "Notas" (CRUD SQLite):**
+  - Integrado soporte de base de datos local SQLite mediante la migración `007_notes.sql`.
+  - Desarrollada la interfaz lateral de "Notas" con creación rápida (`+`), listado y ordenamiento.
+  - Diseñado el modal de edición de notas flotante (glassmorphism) con título editable inline, editor de texto plano y borrado permanente con confirmación.
+  - Auto-guardado inteligente (debounced a 1s o inmediato al perder el foco/cerrar el modal).
+- **QoL & Mejoras Visuales:**
+  - Rediseñado el botón de "Snippets" para usar el estilo **Outline Holográfico** con opacidades del color de acento mediante `color-mix`.
+  - Agregado el botón de ayuda `?` con popover acrílico listando los atajos de teclado principales del sistema.
+  - Añadido el atajo de teclado global `Ctrl + Shift + S` para abrir el modal flotante de Snippets.
+  - Cargado dinámico de la versión real de la release de la app de Tauri en la barra lateral.
+  - Mejoras en la barra de estado de File Explorer con estados coloreados (verde para éxito `✅` y rojo para error `❌`).
+
+### Removed
+
+- Removido el cuadro de bienvenida (welcome-card) de la vista home principal para lograr un aspecto minimalista y limpio.
+
 
 ### Added
 

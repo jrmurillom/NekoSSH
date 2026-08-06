@@ -20,7 +20,7 @@
             <img src="/src/assets/logos/nekossh.png" alt="NekoSSH Logo" class="brand-logo" />
             <div class="brand-text">
               <h1 class="brand-title">NekoSSH</h1>
-              <span class="brand-subtitle">Terminal ssh</span>
+              <span class="brand-subtitle" id="app-version-subtitle">Version --</span>
             </div>
           </div>
         </div>
@@ -30,6 +30,7 @@
           <button id="tab-btn-servers" class="sidebar-tab-btn active">Servidores</button>
           <button id="tab-btn-files" class="sidebar-tab-btn">Archivos</button>
           <button id="tab-btn-monitor" class="sidebar-tab-btn">Monitor</button>
+          <button id="tab-btn-notes" class="sidebar-tab-btn">Notas</button>
         </div>
 
         <!-- Contenedor del panel activo -->
@@ -187,10 +188,55 @@
               </div>
             </div>
           </div>
+          
+          <!-- Panel de Notas (CRUD) -->
+          <div id="panel-notes" class="sidebar-panel">
+            <div class="connections-zone-header">
+              <span class="connections-zone-label">Mis Notas</span>
+              <div class="connections-zone-actions">
+                <button
+                  id="btn-new-note"
+                  class="btn-icon-action"
+                  type="button"
+                  title="Nueva Nota"
+                >
+                  <span id="note-icon-add"></span>
+                </button>
+              </div>
+            </div>
+
+            <div id="notes-list" class="profile-list">
+              <!-- Rendered dynamically -->
+            </div>
+          </div>
         </div>
 
         <!-- Footer mínimo: Snippets + engrane (prefs en popover) -->
         <div class="sidebar-footer">
+          <!-- Popover de Atajos -->
+          <div
+            id="shortcuts-popover"
+            class="prefs-popover"
+            role="dialog"
+            aria-label="Atajos de teclado"
+          >
+            <div class="prefs-title">Atajos de teclado</div>
+            <div class="config-section" style="display: flex; flex-direction: column; gap: 8px; padding-top: 4px;">
+              <div class="shortcut-row" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; gap: 10px;">
+                <span style="color: var(--color-text);">Buscar en terminal</span>
+                <span style="white-space: nowrap;"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>F</kbd></span>
+              </div>
+              <div class="shortcut-row" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; gap: 10px;">
+                <span style="color: var(--color-text);">Historial terminal</span>
+                <span style="white-space: nowrap;"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>H</kbd></span>
+              </div>
+              <div class="shortcut-row" style="display: flex; justify-content: space-between; align-items: center; font-size: 0.78rem; gap: 10px;">
+                <span style="color: var(--color-text);">Ejecutar Snippet</span>
+                <span style="white-space: nowrap;"><kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>S</kbd></span>
+              </div>
+            </div>
+          </div>
+
           <div
             id="prefs-popover"
             class="prefs-popover"
@@ -265,6 +311,16 @@
             <button type="button" id="btn-open-snippets" class="snippets-footer-btn" title="Snippets" aria-label="Snippets"></button>
             <button
               type="button"
+              id="btn-footer-help"
+              class="gear-btn"
+              aria-label="Atajos de teclado"
+              title="Atajos de teclado"
+              aria-expanded="false"
+              aria-controls="shortcuts-popover"
+              style="font-family: var(--font-sans); font-weight: bold; font-size: 1.15rem;"
+            >?</button>
+            <button
+              type="button"
               id="btn-footer-gear"
               class="gear-btn"
               aria-label="Preferencias"
@@ -289,12 +345,6 @@
 
         <!-- Área de visualización de Terminal/Editor -->
         <div id="main-display-area" class="main-display-area">
-          <div class="welcome-screen">
-            <div class="welcome-card">
-              <h2>NekoSSH v2.0</h2>
-              <p>Selecciona un perfil de servidor en la barra lateral para iniciar una terminal SSH con estética Cyber-Sakura.</p>
-            </div>
-          </div>
         </div>
       </main>
     </div>
@@ -456,6 +506,25 @@
         <div class="history-footer">
           <button type="button" id="btn-history-prev" class="btn-secondary">◀ Cargar más antiguos</button>
           <button type="button" id="btn-history-next" class="btn-secondary">Ver más recientes ▶</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal de Notas (CRUD) -->
+    <div id="notes-modal" class="modal" aria-hidden="true">
+      <div class="modal-content notes-modal-content">
+        <div class="notes-modal-header">
+          <input id="note-modal-title" type="text" class="note-title-input" placeholder="Título de la nota..." autocomplete="off" />
+          <div class="notes-modal-header-actions">
+            <button type="button" id="btn-delete-note" class="btn-icon" title="Eliminar Nota" aria-label="Eliminar Nota"></button>
+            <button type="button" id="btn-close-notes-modal" class="btn-icon" title="Cerrar" aria-label="Cerrar"></button>
+          </div>
+        </div>
+        <div class="note-editor-container">
+          <textarea id="note-modal-body" class="note-editor-textarea" placeholder="Escribe tu nota aquí..." spellcheck="false"></textarea>
+        </div>
+        <div class="notes-modal-footer">
+          <span id="note-save-status" class="note-save-status">Cambios guardados</span>
         </div>
       </div>
     </div>

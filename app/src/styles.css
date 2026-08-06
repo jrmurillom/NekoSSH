@@ -683,22 +683,24 @@ body {
   width: auto;
   padding: 10px 12px;
   border-radius: var(--border-radius-md);
-  border: none;
-  background: linear-gradient(135deg, var(--color-accent-primary), var(--color-accent-gradient-end));
-  color: white;
+  border: 1px solid color-mix(in srgb, var(--color-accent-primary) 35%, transparent);
+  background: transparent;
+  color: var(--color-accent-primary);
   font-family: var(--font-sans);
   font-size: 0.92rem;
   font-weight: 600;
   letter-spacing: 0.01em;
   cursor: pointer;
-  transition: filter var(--transition-fast), transform var(--transition-fast);
+  transition: all var(--transition-fast);
 }
 
 .sidebar-footer .snippets-footer-btn:hover,
 .sidebar-footer .snippets-footer-btn:focus-visible {
-  filter: brightness(1.15);
+  background: color-mix(in srgb, var(--color-accent-primary) 8%, transparent);
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--color-accent-primary) 25%, transparent);
   transform: translateY(-1px);
-  color: white;
+  color: var(--color-accent-primary);
   outline: none;
 }
 
@@ -1483,6 +1485,12 @@ input[type="range"]::-webkit-slider-thumb {
   border-color: var(--color-error);
   box-shadow: 0 0 10px rgba(255, 0, 0, 0.25);
   color: var(--color-error);
+}
+
+.files-status.success {
+  border-color: #2ecc71;
+  box-shadow: 0 0 10px rgba(46, 204, 113, 0.25);
+  color: #2ecc71;
 }
 
 @keyframes status-glow {
@@ -2951,4 +2959,166 @@ input[type="range"]::-webkit-slider-thumb {
   font-size: 0.75rem;
   font-weight: bold;
 }
+
+/* ==========================================================================
+   Bloc de Notas (CRUD)
+   ========================================================================== */
+
+.notes-modal-content {
+  max-width: 750px;
+  width: 90%;
+  display: flex;
+  flex-direction: column;
+  background: var(--color-bg-panel, rgba(16, 12, 24, 0.75));
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 15px rgba(255, 105, 180, 0.1);
+  padding: 20px;
+  gap: 15px;
+}
+
+.notes-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 12px;
+}
+
+.note-title-input {
+  flex-grow: 1;
+  font-family: var(--font-sans, sans-serif);
+  font-size: 1.25rem;
+  font-weight: bold;
+  color: var(--color-accent-primary);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 4px 8px;
+  outline: none;
+  transition: all 0.2s ease;
+}
+
+.note-title-input:hover {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.note-title-input:focus {
+  background: rgba(0, 0, 0, 0.2);
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 8px rgba(255, 105, 180, 0.2);
+}
+
+.notes-modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.note-editor-container {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+}
+
+.note-editor-textarea {
+  width: 100%;
+  height: 400px;
+  min-height: 250px;
+  background: rgba(0, 0, 0, 0.25);
+  color: var(--color-text, #f8f8f2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 12px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  transition: all 0.2s ease;
+}
+
+.note-editor-textarea:focus {
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 10px rgba(255, 105, 180, 0.15);
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.notes-modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  padding-top: 8px;
+}
+
+.note-save-status {
+  font-size: 0.75rem;
+  color: var(--color-text-muted, #888);
+  font-style: italic;
+  transition: opacity 0.3s ease;
+}
+
+/* Estilos de la lista de notas en el panel lateral */
+#notes-list .profile-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 12px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  margin-bottom: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+#notes-list .profile-item:hover {
+  background: rgba(255, 105, 180, 0.05);
+  border-color: rgba(255, 105, 180, 0.2);
+  transform: translateX(2px);
+}
+
+#notes-list .profile-item.active {
+  background: rgba(255, 105, 180, 0.1);
+  border-color: var(--color-accent-primary);
+  box-shadow: 0 0 8px rgba(255, 105, 180, 0.2);
+}
+
+#notes-list .profile-item .note-item-title {
+  font-weight: bold;
+  color: var(--color-text, #f8f8f2);
+  font-size: 0.85rem;
+  margin-bottom: 3px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+#notes-list .profile-item .note-item-date {
+  font-size: 0.7rem;
+  color: var(--color-text-muted, #888);
+}
+
+/* Atajos Popover arrow alignment */
+#shortcuts-popover::after {
+  right: 52px;
+}
+
+#shortcuts-popover kbd {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+  padding: 1px 4px;
+  font-family: var(--font-mono, monospace);
+  font-size: 0.72rem;
+  color: var(--color-accent-secondary, #00ffff);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
 

@@ -8,6 +8,7 @@ import "@xterm/xterm/css/xterm.css";
 import { AppIcons, icon, setButtonIcon } from "./icons";
 import { alertDialog, confirmDialog, showContextMenu } from "./overlays";
 import { initSnippetsUi } from "./snippets-ui";
+import { initNotesTab } from "./modules/notes-helper";
 import { stripTrailingPasteNoise } from "./strip-trailing-paste";
 import { readText, writeText } from "@tauri-apps/plugin-clipboard-manager";
 import { clampAndFormatOpacity, calculateTerminalOverlayOpacity, resolveBackgroundUrl, resolveBackgroundApply } from "./bg-settings-helper";
@@ -375,9 +376,11 @@ let existingPrivateKeyContent: string | null = null;
 let tabBtnServers: HTMLButtonElement | null = null;
 let tabBtnFiles: HTMLButtonElement | null = null;
 let tabBtnMonitor: HTMLButtonElement | null = null;
+let tabBtnNotes: HTMLButtonElement | null = null;
 let panelServers: HTMLElement | null = null;
 let panelFiles: HTMLElement | null = null;
 let panelMonitor: HTMLElement | null = null;
+let panelNotes: HTMLElement | null = null;
 
 // Monitor elements
 let monitorEmpty: HTMLElement | null = null;
@@ -818,12 +821,61 @@ function initSettings() {
 
   void loadPreferredEditorIntoUi();
   initFooterPrefsPopover();
+  initFooterShortcutsPopover();
+}
+
+/** Ayuda "?" del footer: abre/cierra popover de atajos rápidos */
+function initFooterShortcutsPopover() {
+  const helpBtn = document.getElementById("btn-footer-help");
+  const pop = document.getElementById("shortcuts-popover");
+  const prefsPop = document.getElementById("prefs-popover");
+  const gearBtn = document.getElementById("btn-footer-gear");
+  if (!helpBtn || !pop) return;
+
+  helpBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    const open = !pop.classList.contains("is-open");
+    pop.classList.toggle("is-open", open);
+    helpBtn.setAttribute("aria-expanded", open ? "true" : "false");
+
+    // Cerrar popover de preferencias
+    if (open && prefsPop && gearBtn) {
+      prefsPop.classList.remove("is-open");
+      gearBtn.setAttribute("aria-expanded", "false");
+    }
+  });
+
+  // Si abren preferencias, cerrar atajos
+  if (gearBtn && prefsPop) {
+    gearBtn.addEventListener("click", () => {
+      if (prefsPop.classList.contains("is-open") && pop.classList.contains("is-open")) {
+        pop.classList.remove("is-open");
+        helpBtn.setAttribute("aria-expanded", "false");
+      }
+    });
+  }
+
+  document.addEventListener("click", (e) => {
+    if (!pop.classList.contains("is-open")) return;
+    const target = e.target as Node;
+    if (pop.contains(target) || helpBtn.contains(target)) return;
+    pop.classList.remove("is-open");
+    helpBtn.setAttribute("aria-expanded", "false");
+  });
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !pop.classList.contains("is-open")) return;
+    pop.classList.remove("is-open");
+    helpBtn.setAttribute("aria-expanded", "false");
+  });
 }
 
 /** Engrane del footer: abre/cierra popover de prefs (misma capacidad que el strip previo). */
 function initFooterPrefsPopover() {
   const gear = document.getElementById("btn-footer-gear");
   const pop = document.getElementById("prefs-popover");
+  const helpBtn = document.getElementById("btn-footer-help");
+  const shortcutsPop = document.getElementById("shortcuts-popover");
   if (!gear || !pop) return;
 
   setButtonIcon(gear, AppIcons.settings, { size: 18, className: "icon--md" });
@@ -833,6 +885,12 @@ function initFooterPrefsPopover() {
     const open = !pop.classList.contains("is-open");
     pop.classList.toggle("is-open", open);
     gear.setAttribute("aria-expanded", open ? "true" : "false");
+
+    // Cerrar popover de atajos
+    if (open && shortcutsPop && helpBtn) {
+      shortcutsPop.classList.remove("is-open");
+      helpBtn.setAttribute("aria-expanded", "false");
+    }
   });
 
   document.addEventListener("click", (e) => {
@@ -873,7 +931,7 @@ async function savePreferredEditorFromUi() {
   const path = configEditorPathInput?.value.trim() || "";
   try {
     await invoke("set_preferred_external_editor_cmd", { path });
-    setExplorerStatus("Editor preferido guardado.");
+    setExplorerStatus("Editor preferido guardado.", false, true);
   } catch (err) {
     await alertDialog({
       title: "No se pudo guardar",
@@ -904,9 +962,11 @@ function initTabs() {
   tabBtnServers = document.getElementById("tab-btn-servers") as HTMLButtonElement;
   tabBtnFiles = document.getElementById("tab-btn-files") as HTMLButtonElement;
   tabBtnMonitor = document.getElementById("tab-btn-monitor") as HTMLButtonElement;
+  tabBtnNotes = document.getElementById("tab-btn-notes") as HTMLButtonElement;
   panelServers = document.getElementById("panel-servers");
   panelFiles = document.getElementById("panel-files");
   panelMonitor = document.getElementById("panel-monitor");
+  panelNotes = document.getElementById("panel-notes");
 
   // Monitor DOM
   monitorEmpty = document.getElementById("monitor-empty");
@@ -957,9 +1017,11 @@ function initTabs() {
     tabBtnServers?.classList.add("active");
     tabBtnFiles?.classList.remove("active");
     tabBtnMonitor?.classList.remove("active");
+    tabBtnNotes?.classList.remove("active");
     panelServers?.classList.add("active");
     panelFiles?.classList.remove("active");
     panelMonitor?.classList.remove("active");
+    panelNotes?.classList.remove("active");
     stopMonitorInterval();
   });
 
@@ -967,9 +1029,11 @@ function initTabs() {
     tabBtnFiles?.classList.add("active");
     tabBtnServers?.classList.remove("active");
     tabBtnMonitor?.classList.remove("active");
+    tabBtnNotes?.classList.remove("active");
     panelFiles?.classList.add("active");
     panelServers?.classList.remove("active");
     panelMonitor?.classList.remove("active");
+    panelNotes?.classList.remove("active");
     stopMonitorInterval();
     void refreshExplorerForActiveTerminal();
   });
@@ -978,9 +1042,11 @@ function initTabs() {
     tabBtnMonitor?.classList.add("active");
     tabBtnServers?.classList.remove("active");
     tabBtnFiles?.classList.remove("active");
+    tabBtnNotes?.classList.remove("active");
     panelMonitor?.classList.add("active");
     panelServers?.classList.remove("active");
     panelFiles?.classList.remove("active");
+    panelNotes?.classList.remove("active");
     
     initMonitorTab();
   });
@@ -1052,7 +1118,7 @@ async function handlePasteScp(targetDir: string) {
       targetTerminalId: currentActiveTerminalId,
       targetPath,
     });
-    setExplorerStatus(`Copia exitosa: ${scpClipboard.name}`);
+    setExplorerStatus(`Copia exitosa: ${scpClipboard.name}`, false, true);
     await refreshExplorerForActiveTerminal(true);
   } catch (err) {
     console.error("Error al copiar scp:", err);
@@ -1084,25 +1150,38 @@ function parentRemotePath(path: string): string | null {
   return parts.length === 0 ? "/" : `/${parts.join("/")}`;
 }
 
-function setExplorerStatus(message: string, isError = false) {
+function setExplorerStatus(message: string, isError = false, isSuccess = false) {
   if (!filesStatus) return;
   if (statusDismissTimer) {
     clearTimeout(statusDismissTimer);
     statusDismissTimer = null;
   }
   if (!message) {
-    filesStatus.classList.remove("is-visible", "error");
+    filesStatus.classList.remove("is-visible", "error", "success");
     filesStatus.textContent = "";
     filesStatus.setAttribute("title", "");
     return;
   }
-  filesStatus.textContent = message;
-  filesStatus.setAttribute("title", message);
+
+  let displayMessage = message;
+  if (isSuccess) {
+    displayMessage = `✅ ${message}`;
+  } else if (isError) {
+    displayMessage = `❌ ${message}`;
+  }
+
+  filesStatus.textContent = displayMessage;
+  filesStatus.setAttribute("title", displayMessage);
   filesStatus.classList.toggle("error", isError);
+  filesStatus.classList.toggle("success", isSuccess);
   filesStatus.classList.add("is-visible");
+  
   if (!isError) {
     statusDismissTimer = setTimeout(() => {
       filesStatus!.classList.remove("is-visible");
+      setTimeout(() => {
+        filesStatus!.classList.remove("error", "success");
+      }, 300);
       statusDismissTimer = null;
     }, 3000);
   }
@@ -1536,7 +1615,7 @@ async function handleEditSessionChanged(payload: EditSessionChangedPayload) {
     }
     try {
       await invoke("confirm_edit_upload", { editId: payload.edit_id });
-      setExplorerStatus("Archivo subido al servidor.");
+      setExplorerStatus("Archivo subido al servidor.", false, true);
     } catch (err) {
       const structured = asEditUploadError(err);
       if (structured?.elevatable) {
@@ -1558,7 +1637,7 @@ async function handleEditSessionChanged(payload: EditSessionChangedPayload) {
           await invoke("edit_session_upload_with_sudo", {
             editId: payload.edit_id,
           });
-          setExplorerStatus("Archivo subido al servidor (sudo).");
+          setExplorerStatus("Archivo subido al servidor (sudo).", false, true);
         } catch (sudoErr) {
           const sudoMsg = uploadErrorMessage(sudoErr);
           await alertDialog({
@@ -1608,6 +1687,16 @@ window.addEventListener("DOMContentLoaded", () => {
   void (async () => {
     await migrateWallpapersFromLocalStorageIfNeeded();
     applyTheme(getActiveTheme());
+    try {
+      const { getVersion } = await import("@tauri-apps/api/app");
+      const version = await getVersion();
+      const versionEl = document.getElementById("app-version-subtitle");
+      if (versionEl) {
+        versionEl.textContent = `Version ${version}`;
+      }
+    } catch (err) {
+      console.error("Error al obtener version de app:", err);
+    }
   })();
   // Inhabilitar menú contextual nativo del navegador en todo el documento
   document.addEventListener("contextmenu", (e) => e.preventDefault());
@@ -1615,6 +1704,7 @@ window.addEventListener("DOMContentLoaded", () => {
   initSettings();
   initSnippetsUi();
   initTabs();
+  initNotesTab();
   initExternalEditListeners();
   initHistoryUi();
   
@@ -3156,12 +3246,18 @@ function initHistoryUi() {
       return;
     }
 
-    // Ctrl+Shift+H (o Ctrl+Alt+H) para abrir el modal flotante
+    // Ctrl+Shift+H (o Ctrl+Alt+H) para abrir el modal flotante de Historial
     if (e.ctrlKey && (e.shiftKey || e.altKey) && e.key.toLowerCase() === "h") {
       if (currentActiveTerminalId) {
         e.preventDefault();
         void openHistoryModal();
       }
+    }
+
+    // Ctrl+Shift+S (o Ctrl+Alt+S) para abrir el modal flotante de Snippets
+    if (e.ctrlKey && (e.shiftKey || e.altKey) && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      document.getElementById("btn-open-snippets")?.click();
     }
   });
 
