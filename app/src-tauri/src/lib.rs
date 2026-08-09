@@ -1065,7 +1065,9 @@ async fn write_ssh_input(
     }
     // Evidencia (smoke_isolate_burst): flush en CADA tecla con lector PTY concurrente
     // provoca "transport read" en libssh2/WinCNG. Solo flush en fin de línea o paste.
-    let should_flush = bytes.iter().any(|b| *b == b'\n' || *b == b'\r') || bytes.len() > 1;
+    // Ignoramos secuencias de control que inicien con ESC (ASCII 27 / \x1b) para evitar caídas con flechas de dirección.
+    let is_escape_seq = bytes.first() == Some(&27);
+    let should_flush = (bytes.iter().any(|b| *b == b'\n' || *b == b'\r') || bytes.len() > 1) && !is_escape_seq;
     if should_flush {
         let mut live = live_arc.lock().unwrap();
         let _ = live.channel.flush();
