@@ -26,6 +26,10 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 - Removido el cuadro de bienvenida (welcome-card) de la vista home principal para lograr un aspecto minimalista y limpio.
 
+### Fixed
+
+- Corregidas caídas repentinas de conexión `PTY: transport read` en Windows al navegar de forma muy rápida con las flechas de dirección (history) o al presionar repetidamente la tecla Enter en logs, optimizando el comportamiento de vaciado del canal de SSH (`.flush()`).
+
 
 ### Added
 
