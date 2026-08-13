@@ -21,6 +21,7 @@ import {
   gridDensityClass,
 } from "./modules/shell-grid-helper";
 import { resolveBrandLogoUrl } from "./modules/brand-logo-helper";
+import { computeVisibleNodes, isFilterActive } from "./modules/explorer-name-filter";
 import {
   BG_BY_THEME_KEY,
   DEFAULT_WALLPAPER_OPACITY,
@@ -427,6 +428,10 @@ let filesContextMenu: HTMLElement | null = null;
 let btnFilesUp: HTMLButtonElement | null = null;
 let btnFilesGo: HTMLButtonElement | null = null;
 let btnFilesRefresh: HTMLButtonElement | null = null;
+let filesFilter: HTMLElement | null = null;
+let filesFilterInput: HTMLInputElement | null = null;
+let btnFilesFilterClear: HTMLButtonElement | null = null;
+let explorerNameFilter = "";
 
 // Remote history (Fase 5)
 let historyModal: HTMLElement | null = null;
@@ -999,6 +1004,9 @@ function initTabs() {
   btnFilesUp = document.getElementById("btn-files-up") as HTMLButtonElement;
   btnFilesGo = document.getElementById("btn-files-go") as HTMLButtonElement;
   btnFilesRefresh = document.getElementById("btn-files-refresh") as HTMLButtonElement;
+  filesFilter = document.getElementById("files-filter");
+  filesFilterInput = document.getElementById("files-filter-input") as HTMLInputElement;
+  btnFilesFilterClear = document.getElementById("btn-files-filter-clear") as HTMLButtonElement;
 
   if (btnFilesUp) {
     setButtonIcon(btnFilesUp, AppIcons.arrowUp);
@@ -1068,6 +1076,20 @@ function initTabs() {
 
   btnFilesRefresh?.addEventListener("click", () => {
     void refreshExplorerAtCurrentPath();
+  });
+
+  filesFilterInput?.addEventListener("input", () => {
+    explorerNameFilter = filesFilterInput?.value ?? "";
+    updateFilterClearVisibility();
+    renderExplorerTree();
+  });
+
+  btnFilesFilterClear?.addEventListener("click", () => {
+    explorerNameFilter = "";
+    if (filesFilterInput) filesFilterInput.value = "";
+    updateFilterClearVisibility();
+    renderExplorerTree();
+    filesFilterInput?.focus();
   });
 
   filesContextMenu?.querySelectorAll("li").forEach((li) => {
@@ -1198,6 +1220,7 @@ function showExplorerEmpty(message: string) {
     filesEmpty.textContent = message;
   }
   if (filesToolbar) filesToolbar.style.display = "none";
+  if (filesFilter) filesFilter.style.display = "none";
   setExplorerStatus("");
   if (filesTree) {
     filesTree.style.display = "none";
@@ -1208,7 +1231,13 @@ function showExplorerEmpty(message: string) {
 function showExplorerReady() {
   if (filesEmpty) filesEmpty.style.display = "none";
   if (filesToolbar) filesToolbar.style.display = "flex";
+  if (filesFilter) filesFilter.style.display = "flex";
   if (filesTree) filesTree.style.display = "flex";
+}
+
+function updateFilterClearVisibility() {
+  if (!btnFilesFilterClear) return;
+  btnFilesFilterClear.classList.toggle("is-hidden", explorerNameFilter.length === 0);
 }
 
 function setExplorerPathDisplay(path: string) {
@@ -1385,12 +1414,30 @@ function renderExplorerTree() {
     filesTree.appendChild(el);
     return;
   }
+
+  const filterActive = isFilterActive(explorerNameFilter);
+  const visible = filterActive
+    ? computeVisibleNodes(explorerRoot.children, explorerNameFilter)
+    : null;
+
+  if (visible && visible.size === 0) {
+    const el = document.createElement("div");
+    el.className = "files-tree-empty";
+    el.textContent = "(sin coincidencias)";
+    filesTree.appendChild(el);
+    return;
+  }
+
   explorerRoot.children.forEach((child) => {
-    filesTree!.appendChild(buildExplorerNodeEl(child));
+    if (visible && !visible.has(child)) return;
+    filesTree!.appendChild(buildExplorerNodeEl(child, visible));
   });
 }
 
-function buildExplorerNodeEl(node: ExplorerNodeState): HTMLElement {
+function buildExplorerNodeEl(
+  node: ExplorerNodeState,
+  visible: Set<ExplorerNodeState> | null = null,
+): HTMLElement {
   const wrap = document.createElement("div");
   wrap.className = "files-node";
 
@@ -1487,13 +1534,20 @@ function buildExplorerNodeEl(node: ExplorerNodeState): HTMLElement {
   if (node.isDir && node.expanded) {
     const kids = document.createElement("div");
     kids.className = "files-node-children";
-    if (node.children.length === 0) {
-      const empty = document.createElement("div");
-      empty.className = "files-tree-empty";
-      empty.textContent = "(vacío)";
-      kids.appendChild(empty);
+    const childNodes = visible
+      ? node.children.filter((child) => visible.has(child))
+      : node.children;
+    if (childNodes.length === 0) {
+      // Con filtro activo no mostramos "(vacío)": la carpeta es visible por sí
+      // misma aunque sus hijos no coincidan.
+      if (!visible) {
+        const empty = document.createElement("div");
+        empty.className = "files-tree-empty";
+        empty.textContent = "(vacío)";
+        kids.appendChild(empty);
+      }
     } else {
-      node.children.forEach((child) => kids.appendChild(buildExplorerNodeEl(child)));
+      childNodes.forEach((child) => kids.appendChild(buildExplorerNodeEl(child, visible)));
     }
     wrap.appendChild(kids);
   }

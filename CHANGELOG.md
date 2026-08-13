@@ -6,6 +6,18 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-08-13
+
+### Added
+
+- **Filtro por nombre en el explorador SFTP (Archivos):**
+  - Campo de filtro sobre las entradas ya pintadas del árbol (cwd + hijos de carpetas expandidas).
+  - Coincidencia por substring sin distinguir mayúsculas/minúsculas; padres ancla cuando un hijo coincide.
+  - Botón **×** para limpiar el filtro y volver a mostrar todo; estado “(sin coincidencias)” si no hay match.
+  - Filtro 100 % cliente (sin listados SFTP adicionales ni búsqueda recursiva remota).
+- Spec `sftp-explorer`: requisito de filtro por nombre sincronizado a main specs.
+- Archivo OpenSpec de `sftp-explorer-name-search` y `notas`.
+
 ## [0.1.4] - 2026-08-06
 
 ### Added
