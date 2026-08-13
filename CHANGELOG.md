@@ -6,6 +6,18 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
+## [0.1.6] - 2026-08-13
+
+### Added
+
+- **Arrastrar y soltar para subir al explorador SFTP (Archivos):**
+  - Overlay de dropzone derivado de tokens del tema (sin color fijo) e icono Lucide `upload`.
+  - Destino por fila: carpeta bajo el cursor → esa ruta; archivo → carpeta contenedora; fondo → cwd actual.
+  - Confirmación A1 siempre antes de subir (nombre o cantidad + destino) y confirmación aparte por sobreescritura.
+  - Subida secuencial con `sftp_upload_file`, progreso en el estado del explorador, tolerancia a fallos parciales y refresco al terminar.
+- Helper puro `explorer-drop-helper` con unit tests (resolución de destino, colisiones, texto de confirmación).
+- Spec `sftp-explorer` sincronizado (drag & drop, sobreescritura y progreso) y change archivado `sftp-drag-drop-upload`.
+
 ## [0.1.5] - 2026-08-13
 
 ### Added

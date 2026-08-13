@@ -23,6 +23,12 @@ import {
 import { resolveBrandLogoUrl } from "./modules/brand-logo-helper";
 import { computeVisibleNodes, isFilterActive } from "./modules/explorer-name-filter";
 import {
+  detectCollisions,
+  formatUploadConfirm,
+  resolveDropTarget,
+  baseName,
+} from "./modules/explorer-drop-helper";
+import {
   BG_BY_THEME_KEY,
   DEFAULT_WALLPAPER_OPACITY,
   LEGACY_BG_LABEL_KEY,
@@ -473,6 +479,13 @@ let explorerCwd = "";
 let explorerBoundTerminalId: string | null = null;
 let contextMenuPath: string | null = null;
 let explorerLoading = false;
+
+// Arrastrar y soltar (subida SFTP)
+let explorerDropzone: HTMLElement | null = null;
+let explorerDropzonePath: HTMLElement | null = null;
+let dragHighlightedRow: HTMLElement | null = null;
+let dragDropRegistered = false;
+let uploadInProgress = false;
 let scpClipboard: {
   terminalId: string;
   path: string;
@@ -1007,6 +1020,12 @@ function initTabs() {
   filesFilter = document.getElementById("files-filter");
   filesFilterInput = document.getElementById("files-filter-input") as HTMLInputElement;
   btnFilesFilterClear = document.getElementById("btn-files-filter-clear") as HTMLButtonElement;
+  explorerDropzone = document.getElementById("explorer-dropzone");
+  explorerDropzonePath = document.getElementById("explorer-dropzone-path");
+  const dropzoneIcon = document.getElementById("explorer-dropzone-icon");
+  if (dropzoneIcon) {
+    dropzoneIcon.replaceChildren(icon(AppIcons.upload, { size: 32 }));
+  }
 
   if (btnFilesUp) {
     setButtonIcon(btnFilesUp, AppIcons.arrowUp);
@@ -1104,6 +1123,8 @@ function initTabs() {
 
   document.addEventListener("click", () => hideContextMenu());
 
+  void initExplorerDragDrop();
+
   filesTree?.addEventListener("contextmenu", async (ev) => {
     ev.preventDefault();
     if (ev.target !== filesTree) return; // solo fondo
@@ -1151,6 +1172,202 @@ async function handlePasteScp(targetDir: string) {
 function hideContextMenu() {
   if (filesContextMenu) filesContextMenu.style.display = "none";
   contextMenuPath = null;
+}
+
+// --- Arrastrar y soltar: subida SFTP ---
+
+/** El arrastre solo aplica con la pestaña Archivos activa y una sesión conectada. */
+function explorerDragEnabled(): boolean {
+  if (!panelFiles?.classList.contains("active")) return false;
+  if (!currentActiveTerminalId) return false;
+  return !!activeTerminals.get(currentActiveTerminalId)?.isConnected;
+}
+
+/** Une un directorio remoto con un nombre de archivo (semántica POSIX). */
+function joinRemote(dir: string, name: string): string {
+  if (dir === "/" || dir === "") return `/${name}`;
+  return `${dir.replace(/\/+$/g, "")}/${name}`;
+}
+
+/**
+ * Localiza la fila del árbol bajo coordenadas físicas del evento nativo.
+ * Normaliza por `devicePixelRatio` para no desalinear el objetivo con el zoom/DPI.
+ */
+function resolveDropRowFromPoint(
+  physX: number,
+  physY: number,
+): { path: string; isDir: boolean; el: HTMLElement } | null {
+  const dpr = window.devicePixelRatio || 1;
+  const el = document.elementFromPoint(physX / dpr, physY / dpr);
+  const row = (el as HTMLElement | null)?.closest?.(".files-node-row") as HTMLElement | null;
+  if (!row || !row.dataset.path) return null;
+  return { path: row.dataset.path, isDir: row.dataset.isDir === "true", el: row };
+}
+
+function clearDragHighlight() {
+  if (dragHighlightedRow) {
+    dragHighlightedRow.classList.remove("drag-over");
+    dragHighlightedRow = null;
+  }
+}
+
+function setDragHighlight(row: HTMLElement | null) {
+  if (dragHighlightedRow === row) return;
+  clearDragHighlight();
+  if (row) {
+    row.classList.add("drag-over");
+    dragHighlightedRow = row;
+  }
+}
+
+function showDropOverlay(dest: string) {
+  if (explorerDropzonePath) explorerDropzonePath.textContent = dest;
+  if (explorerDropzone) explorerDropzone.style.display = "flex";
+}
+
+function hideDropOverlay() {
+  if (explorerDropzone) explorerDropzone.style.display = "none";
+  clearDragHighlight();
+}
+
+function handleExplorerDragOver(x: number, y: number) {
+  if (!explorerDragEnabled()) {
+    hideDropOverlay();
+    return;
+  }
+  const hit = resolveDropRowFromPoint(x, y);
+  const dest = resolveDropTarget(
+    hit ? { path: hit.path, isDir: hit.isDir } : null,
+    explorerCwd,
+  );
+  setDragHighlight(hit && hit.isDir ? hit.el : null);
+  showDropOverlay(dest);
+}
+
+async function handleExplorerDrop(x: number, y: number, paths: string[]) {
+  const enabled = explorerDragEnabled();
+  const hit = resolveDropRowFromPoint(x, y);
+  const dest = resolveDropTarget(
+    hit ? { path: hit.path, isDir: hit.isDir } : null,
+    explorerCwd,
+  );
+  hideDropOverlay();
+  if (!enabled) return;
+  const files = (paths ?? []).filter(Boolean);
+  if (files.length === 0) return;
+  await runExplorerUpload(files, dest);
+}
+
+async function runExplorerUpload(localPaths: string[], dest: string) {
+  if (uploadInProgress) return;
+  const terminalId = currentActiveTerminalId;
+  if (!terminalId) return;
+
+  const ok = await confirmDialog({
+    title: "Subir archivos",
+    message: "¿Subir al servidor?",
+    impact: formatUploadConfirm(localPaths, dest),
+    confirmLabel: "Subir",
+    cancelLabel: "Cancelar",
+  });
+  if (!ok) return;
+
+  let existingNames = new Set<string>();
+  try {
+    const entries = await invoke<SftpDirEntry[]>("sftp_list_dir", {
+      terminalId,
+      path: dest,
+    });
+    existingNames = new Set(entries.map((e) => e.name));
+  } catch (err) {
+    console.error("No se pudo listar el destino para detectar colisiones:", err);
+  }
+
+  const collisions = new Set(detectCollisions(localPaths, existingNames));
+  const toUpload: string[] = [];
+  for (const p of localPaths) {
+    const name = baseName(p);
+    if (collisions.has(name)) {
+      const replace = await confirmDialog({
+        title: "Reemplazar archivo",
+        message: `Ya existe "${name}" en el destino. ¿Reemplazar?`,
+        detailFilename: name,
+        detailFullPath: joinRemote(dest, name),
+        confirmLabel: "Reemplazar",
+        cancelLabel: "Omitir",
+        danger: true,
+      });
+      if (!replace) continue;
+    }
+    toUpload.push(p);
+  }
+
+  if (toUpload.length === 0) {
+    setExplorerStatus("Subida cancelada");
+    return;
+  }
+
+  uploadInProgress = true;
+  const failed: string[] = [];
+  let index = 0;
+  for (const p of toUpload) {
+    const name = baseName(p);
+    setExplorerStatus(`Subiendo ${name} (${index + 1}/${toUpload.length})…`);
+    try {
+      await invoke("sftp_upload_file", {
+        terminalId,
+        localPath: p,
+        remotePath: joinRemote(dest, name),
+      });
+    } catch (err) {
+      console.error("Error al subir", p, err);
+      failed.push(name);
+    }
+    index++;
+  }
+  uploadInProgress = false;
+
+  const uploaded = toUpload.length - failed.length;
+  if (failed.length === 0) {
+    setExplorerStatus(`Subida completa: ${uploaded} archivo(s)`, false, true);
+  } else {
+    setExplorerStatus(
+      `Subidos ${uploaded}, fallaron ${failed.length}: ${failed.join(", ")}`,
+      true,
+    );
+  }
+  if (uploaded > 0) await refreshExplorerForActiveTerminal(true);
+}
+
+async function initExplorerDragDrop() {
+  if (dragDropRegistered) return;
+  dragDropRegistered = true;
+  try {
+    const { getCurrentWebview } = await import("@tauri-apps/api/webview");
+    await getCurrentWebview().onDragDropEvent((event) => {
+      const payload = event.payload;
+      switch (payload.type) {
+        case "enter":
+        case "over": {
+          const pos = payload.position;
+          handleExplorerDragOver(pos.x, pos.y);
+          break;
+        }
+        case "drop": {
+          const pos = payload.position;
+          void handleExplorerDrop(pos.x, pos.y, payload.paths);
+          break;
+        }
+        case "leave":
+        default:
+          hideDropOverlay();
+          break;
+      }
+    });
+  } catch (err) {
+    console.error("No se pudo registrar el arrastrar y soltar del explorador:", err);
+    dragDropRegistered = false;
+  }
 }
 
 function normalizeRemotePath(path: string): string {
@@ -1443,6 +1660,8 @@ function buildExplorerNodeEl(
 
   const row = document.createElement("div");
   row.className = "files-node-row";
+  row.dataset.path = node.path;
+  row.dataset.isDir = node.isDir ? "true" : "false";
   if (pathsEqual(node.path, explorerCwd)) row.classList.add("active");
 
   const toggle = document.createElement("span");

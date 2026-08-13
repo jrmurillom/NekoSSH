@@ -2168,9 +2168,9 @@ input[type="range"]::-webkit-slider-thumb {
   right: 0;
   bottom: 0;
   z-index: 100;
-  background: rgba(26, 21, 35, 0.85);
-  backdrop-filter: blur(4px);
-  -webkit-backdrop-filter: blur(4px);
+  background: rgba(var(--bg-dark-base-rgb), 0.82);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
   border: 2px dashed var(--color-accent-primary);
   border-radius: var(--border-radius-md);
   margin: 8px;
@@ -2192,7 +2192,8 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .explorer-dropzone-icon {
-  font-size: 2rem;
+  display: inline-flex;
+  color: var(--color-accent-primary);
   margin-bottom: 4px;
 }
 

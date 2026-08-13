@@ -43,6 +43,7 @@ Este documento define el alcance, stack tecnológico y las fases de desarrollo p
   - Establecimiento de dos conexiones SSH en paralelo por servidor (una para terminal e interactividad en tiempo real y otra dedicada a SFTP) para evitar lag o bloqueos en la terminal.
 * **Explorador de Archivos Visual**:
   - Estructuración de árbol de directorios remotos en el panel lateral.
+  - **Arrastrar y soltar para subir**: arrastrar archivos locales sobre el panel Archivos muestra un overlay (derivado de los tokens del tema) con la ruta destino; carpeta bajo el cursor → esa carpeta, archivo → su carpeta contenedora, fondo → ruta actual. Al soltar se pide **siempre** confirmación A1 (nombre o cantidad + destino) y confirmación aparte por sobreescritura; la subida es secuencial, tolera fallos individuales y refresca al terminar.
 * **Sincronización Bidireccional (Explorer ⇄ Terminal)**:
   - Sincronización del explorador de archivos para que siga la ruta remota activa cuando se realice navegación (`cd`) en la terminal.
   - Opción de "Abrir en Terminal" en el explorador de archivos mediante menú contextual para forzar un `cd` hacia esa ruta en la terminal abierta.
