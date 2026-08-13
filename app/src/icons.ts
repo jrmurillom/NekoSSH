@@ -36,6 +36,7 @@ import {
   Play,
   Pause,
   FileText,
+  Upload,
 } from "lucide";
 
 export type IconOptions = {
@@ -105,4 +106,5 @@ export const AppIcons = {
   play: Play,
   pause: Pause,
   fileText: FileText,
+  upload: Upload,
 } as const;
