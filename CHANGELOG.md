@@ -6,6 +6,17 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
+## [0.1.7] - 2026-08-31
+
+### Fixed
+
+- **Integridad de subida de archivos binarios (`.zip`, imágenes, etc.):**
+  - Implementado vaciado explícito de buffers (`remote.flush()`) con reintentos no bloqueantes y bombeo continuo de PTY (`pump_pty`) en `sftp_upload_file_blocking` antes de destruir el descriptor de archivo remoto.
+  - Añadida verificación de integridad post-subida mediante `sftp.stat()` comparando byte a byte el tamaño remoto con el archivo local para evitar corrupción por terminación prematura del socket.
+- **Descarga fresca mandatoria en edición externa:**
+  - Corregido el problema de reapertura de versiones desactualizadas al presionar "Editar" en el explorador de archivos.
+  - Al iniciar una edición sobre un archivo ya abierto previamente, el sistema detiene limpiamente el watcher anterior, fuerza una nueva descarga completa desde el servidor SFTP y establece un nuevo watcher activo sobre la versión fresca.
+
 ## [0.1.6] - 2026-08-13
 
 ### Added
