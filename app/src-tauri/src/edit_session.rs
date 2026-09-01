@@ -85,6 +85,48 @@ impl EditSessionRegistry {
         self.by_id.get_mut(edit_id)
     }
 
+    /// Registra una nueva sesión reemplazando cualquier sesión previa para la misma (terminal_id, remote_path).
+    pub fn register_or_replace(
+        &mut self,
+        edit_id: String,
+        terminal_id: String,
+        remote_path: String,
+        local_path: PathBuf,
+        baseline_fingerprint: String,
+    ) -> (EditSessionInfo, Option<String>) {
+        let key = Self::index_key(&terminal_id, &remote_path);
+        let old_id = self.index.get(&key).cloned();
+        if let Some(ref old) = old_id {
+            self.by_id.remove(old);
+        }
+
+        let info = EditSessionInfo {
+            edit_id: edit_id.clone(),
+            terminal_id: terminal_id.clone(),
+            remote_path: remote_path.clone(),
+            local_path: local_path.to_string_lossy().into_owned(),
+            reused: false,
+            phase: EditSessionPhase::Watching,
+        };
+
+        self.index.insert(key, edit_id.clone());
+        self.by_id.insert(
+            edit_id.clone(),
+            EditSessionRecord {
+                edit_id,
+                terminal_id,
+                remote_path,
+                local_path,
+                baseline_fingerprint,
+                phase: EditSessionPhase::Watching,
+                preserve_temp_on_close: false,
+                last_fs_event: None,
+                pending_change_emit: false,
+            },
+        );
+        (info, old_id)
+    }
+
     /// Registra o reutiliza sesión. Si reutiliza, no cambia paths/baseline.
     pub fn register_or_reuse(
         &mut self,
@@ -429,5 +471,63 @@ mod tests {
         reg.begin_upload(&info.edit_id).unwrap();
         let taken = reg.take_for_terminal("term", false);
         assert!(taken[0].preserve_temp_on_close);
+    }
+
+    #[test]
+    fn reemplaza_sesion_previa_al_reabrir_con_descarga_fresca() {
+        let mut reg = EditSessionRegistry::new();
+        // 1. Primera apertura
+        let (info1, old1) = reg.register_or_replace(
+            "id-1".into(),
+            "term-a".into(),
+            "/home/user/config.yaml".into(),
+            PathBuf::from("/tmp/edit-1/config.yaml"),
+            "hash-v1".into(),
+        );
+        assert!(!info1.reused);
+        assert_eq!(info1.edit_id, "id-1");
+        assert!(old1.is_none());
+        assert!(reg.get("id-1").is_some());
+
+        // 2. Segunda apertura (reabrir con descarga fresca del servidor v2)
+        let (info2, old2) = reg.register_or_replace(
+            "id-2".into(),
+            "term-a".into(),
+            "/home/user/config.yaml".into(),
+            PathBuf::from("/tmp/edit-2/config.yaml"),
+            "hash-v2".into(),
+        );
+        assert!(!info2.reused);
+        assert_eq!(info2.edit_id, "id-2");
+        assert_eq!(old2, Some("id-1".to_string()));
+        assert!(reg.get("id-1").is_none()); // Sesión vieja removida
+        assert!(reg.get("id-2").is_some()); // Sesión nueva activa
+
+        let rec2 = reg.get("id-2").unwrap();
+        assert_eq!(rec2.baseline_fingerprint, "hash-v2");
+        assert_eq!(rec2.phase, EditSessionPhase::Watching);
+
+        // 3. Verificamos que el watcher evalúa contra el nuevo baseline hash-v2
+        reg.note_fs_event("id-2");
+        let now = Instant::now() + Duration::from_secs(2);
+        // Si el contenido local coincide con hash-v2, no emite cambio
+        let eval_clean = reg.evaluate_after_debounce(
+            "id-2",
+            "hash-v2",
+            Duration::from_millis(10),
+            now,
+        );
+        assert!(eval_clean.is_none());
+
+        // Si el usuario modifica y guarda hash-v3, emite ConfirmPending
+        reg.note_fs_event("id-2");
+        let eval_dirty = reg.evaluate_after_debounce(
+            "id-2",
+            "hash-v3",
+            Duration::from_millis(10),
+            now + Duration::from_secs(1),
+        );
+        assert!(eval_dirty.is_some());
+        assert_eq!(eval_dirty.unwrap().phase, EditSessionPhase::ConfirmPending);
     }
 }

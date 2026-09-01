@@ -80,6 +80,29 @@ impl FakeSftpStore {
         Ok(())
     }
 
+    /// Sube simulando verificación de integridad de tamaño (stat.size == local.len()).
+    pub fn upload_from_local_with_integrity(
+        &self,
+        local_path: &Path,
+        remote_path: &str,
+    ) -> Result<(), String> {
+        let data = std::fs::read(local_path).map_err(|e| format!("Error al leer local: {}", e))?;
+        let expected_size = data.len() as u64;
+        self.inner
+            .lock()
+            .unwrap()
+            .insert(remote_path.to_string(), data);
+
+        let remote_size = self.file_size(remote_path)?;
+        if remote_size != expected_size {
+            return Err(format!(
+                "Discrepancia de integridad en subida: tamaño remoto ({} bytes) no coincide con local ({} bytes)",
+                remote_size, expected_size
+            ));
+        }
+        Ok(())
+    }
+
     /// Simula denegación de escritura en paths concretos (mock de permisos).
     pub fn upload_from_local_denying(
         &self,
@@ -154,6 +177,34 @@ mod tests {
             .upload_from_local(&tmp, "/etc/hosts")
             .expect("upload");
         assert_eq!(store.get("/etc/hosts").unwrap(), b"modified\n");
+        let _ = fs::remove_file(&tmp);
+    }
+
+    #[test]
+    fn fake_upload_binary_zip_intact() {
+        let store = FakeSftpStore::new();
+        // Simular un archivo zip con cabecera PK\x03\x04 y end of central directory PK\x05\x06 y bytes nulos
+        let mut zip_bytes = Vec::new();
+        zip_bytes.extend_from_slice(b"PK\x03\x04\x14\x00\x00\x00\x08\x00"); // Local file header
+        zip_bytes.extend_from_slice(&[0u8; 64]); // Binary payload con NULs
+        zip_bytes.extend_from_slice(b"PK\x01\x02\x14\x00\x14\x00"); // Central directory
+        zip_bytes.extend_from_slice(b"PK\x05\x06\x00\x00\x00\x00"); // End of central directory
+
+        let tmp = std::env::temp_dir().join(format!("nekossh-fake-zip-{}", std::process::id()));
+        fs::write(&tmp, &zip_bytes).unwrap();
+
+        store
+            .upload_from_local_with_integrity(&tmp, "/remote/archive.zip")
+            .expect("upload zip con integridad");
+
+        let stored = store.get("/remote/archive.zip").expect("archivo en store");
+        assert_eq!(stored, zip_bytes);
+        assert_eq!(store.file_size("/remote/archive.zip").unwrap(), zip_bytes.len() as u64);
+
+        let probe = store.probe("/remote/archive.zip").unwrap();
+        assert!(probe.looks_binary);
+        assert!(!probe.too_large);
+
         let _ = fs::remove_file(&tmp);
     }
 

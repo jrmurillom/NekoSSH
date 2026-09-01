@@ -279,6 +279,68 @@ pub fn sftp_upload_file_blocking(
             Err(e) => return Err(format!("Error al escribir remoto: {}", e)),
         }
     }
+
+    // Flush explícito con pump para asegurar que todos los buffers salgan al socket antes del drop
+    {
+        let mut flush_attempts = 0;
+        loop {
+            let flush_res = {
+                let mut live = live_arc.lock().unwrap();
+                let pumped = pump_pty(&mut live, &mut pump_buf);
+                let r = remote.flush();
+                (r, pumped)
+            };
+            emit_pump(app, terminal_id, &flush_res.1);
+            match flush_res.0 {
+                Ok(()) => break,
+                Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                    if flush_attempts < 200 {
+                        flush_attempts += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        continue;
+                    }
+                    return Err(format!("Timeout al sincronizar archivo remoto: {}", e));
+                }
+                Err(e) => return Err(format!("Error al sincronizar archivo remoto: {}", e)),
+            }
+        }
+    }
+
+    drop(remote);
+
+    // Verificación de integridad post-subida: sftp.stat() debe coincidir con data.len()
+    let remote_size = {
+        let mut stat_attempts = 0;
+        loop {
+            let stat_res = {
+                let mut live = live_arc.lock().unwrap();
+                let pumped = pump_pty(&mut live, &mut pump_buf);
+                let st = sftp.stat(Path::new(remote_path));
+                (st, pumped)
+            };
+            emit_pump(app, terminal_id, &stat_res.1);
+            match stat_res.0 {
+                Ok(st) => break st.size.unwrap_or(0),
+                Err(e) => {
+                    if stat_attempts < 200 && is_would_block_ssh(&e) {
+                        stat_attempts += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                        continue;
+                    }
+                    return Err(format!("Error al verificar integridad en remoto {}: {}", remote_path, e));
+                }
+            }
+        }
+    };
+
+    let expected_size = data.len() as u64;
+    if remote_size != expected_size {
+        return Err(format!(
+            "Discrepancia de integridad en subida: tamaño remoto ({} bytes) no coincide con local ({} bytes)",
+            remote_size, expected_size
+        ));
+    }
+
     Ok(())
 }
 
@@ -702,26 +764,13 @@ pub async fn start_external_edit(
     edits: State<'_, SharedEditSessions>,
     watchers: State<'_, EditWatchers>,
 ) -> Result<EditSessionInfo, String> {
-    // Reuse?
-    {
+    // Si ya existía una sesión previa para este terminal y ruta, detenemos su watcher
+    let prior_edit_id = {
         let reg = edits.lock().unwrap();
-        if let Some(existing) = reg.find(&terminal_id, &remote_path) {
-            if existing.phase != EditSessionPhase::Closed {
-                let preferred = {
-                    let conn = get_db_conn(&app)?;
-                    get_preferred_external_editor(&conn).unwrap_or_default()
-                };
-                open_local_in_editor(&app, &existing.local_path, &preferred)?;
-                return Ok(EditSessionInfo {
-                    edit_id: existing.edit_id.clone(),
-                    terminal_id: existing.terminal_id.clone(),
-                    remote_path: existing.remote_path.clone(),
-                    local_path: existing.local_path.to_string_lossy().into_owned(),
-                    reused: true,
-                    phase: existing.phase,
-                });
-            }
-        }
+        reg.find(&terminal_id, &remote_path).map(|r| r.edit_id.clone())
+    };
+    if let Some(ref old_id) = prior_edit_id {
+        stop_watcher(&watchers, old_id);
     }
 
     let app_data = app
@@ -746,13 +795,14 @@ pub async fn start_external_edit(
     let baseline = file_fingerprint(&local_path)?;
     let info = {
         let mut reg = edits.lock().unwrap();
-        reg.register_or_reuse(
+        let (info, _) = reg.register_or_replace(
             edit_id.clone(),
             terminal_id.clone(),
             remote_path.clone(),
             local_path.clone(),
             baseline,
-        )
+        );
+        info
     };
 
     let preferred = {

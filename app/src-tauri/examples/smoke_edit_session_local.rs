@@ -13,7 +13,6 @@ use app_lib::preferences::{
     ensure_app_preferences_schema, get_preferred_external_editor, set_preferred_external_editor,
 };
 use rusqlite::Connection;
-use std::path::PathBuf;
 
 fn main() {
     println!("=== smoke_edit_session_local (mock/local only; cero writes al lab SSH) ===");
@@ -69,24 +68,27 @@ fn main() {
         content_fingerprint(b"listen=443\n"),
     );
     assert!(!info.reused);
-    let again = reg.register_or_reuse(
+    let (replaced, old_id) = reg.register_or_replace(
         "e2".into(),
         "term-1".into(),
         "/home/neko/app.conf".into(),
-        PathBuf::from("/tmp/other"),
-        "other".into(),
+        session_dir.join("app-fresh.conf"),
+        content_fingerprint(b"listen=8080\n"),
     );
-    assert!(again.reused);
-    assert_eq!(again.edit_id, "e1");
-    assert!(reg.mark_confirm_pending("e1"));
-    assert!(!reg.mark_confirm_pending("e1"));
+    assert!(!replaced.reused);
+    assert_eq!(replaced.edit_id, "e2");
+    assert_eq!(old_id, Some("e1".to_string()));
+    assert!(reg.get("e1").is_none());
+    assert!(reg.get("e2").is_some());
+    assert!(reg.mark_confirm_pending("e2"));
+    assert!(!reg.mark_confirm_pending("e2"));
     assert_eq!(
-        reg.get("e1").unwrap().phase,
+        reg.get("e2").unwrap().phase,
         EditSessionPhase::ConfirmPending
     );
-    reg.dismiss_confirm("e1");
-    assert_eq!(reg.get("e1").unwrap().phase, EditSessionPhase::Watching);
-    println!("OK edit session reuse + coalesce confirm");
+    reg.dismiss_confirm("e2");
+    assert_eq!(reg.get("e2").unwrap().phase, EditSessionPhase::Watching);
+    println!("OK edit session replace + fresh baseline + coalesce confirm");
 
     let _ = std::fs::remove_dir_all(&tmp_root);
     println!("OK cleanup temps locales");

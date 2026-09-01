@@ -5,15 +5,15 @@
 Edición de archivos remotos con editor externo local: descarga a temp, vigilancia, confirmación glass antes de subir, cleanup, y reintento con sudo no interactivo tras fallos de permisos.
 ## Requirements
 ### Requirement: Sesión de edición externa con archivo temporal
-El sistema SHALL, al iniciar una edición externa, descargar el archivo remoto a un directorio temporal aislado de la aplicación (por `edit_id`), registrar la asociación `terminal_id` + `remote_path` + `local_path`, y abrir el archivo local con el editor configurado. Si ya existe una sesión activa para el mismo `terminal_id` y `remote_path`, el sistema SHALL reutilizarla (reabrir el editor) en lugar de duplicar el temporal.
+El sistema SHALL, al solicitar iniciar o reabrir una edición externa sobre un archivo remoto, descargar obligatoriamente la versión más reciente del archivo desde el servidor a un directorio temporal aislado de la aplicación (por `edit_id`). Si ya existía una sesión o watcher previo para el mismo `terminal_id` y `remote_path`, el sistema SHALL detener el watcher previo, reemplazar la sesión con una nueva línea base (`baseline_fingerprint`), abrir el archivo local con el editor configurado y comenzar una vigilancia activa con un nuevo watcher sobre el archivo descargado.
 
 #### Scenario: Primera edición de un archivo
 - **WHEN** el usuario inicia edición sobre un archivo remoto que aún no tiene sesión activa
 - **THEN** el sistema crea temp aislado, descarga el remoto, abre el editor y comienza a vigilar el archivo local
 
-#### Scenario: Reabrir el mismo remoto
-- **WHEN** el usuario vuelve a pedir Editar/doble clic sobre el mismo path remoto en la misma terminal con sesión de edición ya activa
-- **THEN** el sistema no crea un segundo temp y reabre el editor sobre el local existente
+#### Scenario: Reabrir y forzar descarga fresca
+- **WHEN** el usuario vuelve a pedir Editar o hace doble clic sobre un path remoto en la misma terminal que ya tenía una sesión previa
+- **THEN** el sistema detiene el watcher anterior, descarga obligatoriamente la versión fresca desde el servidor remoto, abre el editor con el nuevo contenido y re-establece la vigilancia activa
 
 ### Requirement: Editor externo preferido con fallback OS
 El sistema SHALL persistir una preferencia de usuario `preferred_external_editor` (ruta de ejecutable). Si la preferencia es no vacía y el ejecutable es usable, el sistema MUST abrir el archivo local con ese editor. Si la preferencia está vacía o no es usable, el sistema MUST abrir el archivo con la asociación por defecto del sistema operativo. El producto SHALL exponer UI en español para ver y cambiar esa ruta (patrón Settings / appearance).
