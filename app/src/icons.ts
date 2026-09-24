@@ -6,6 +6,7 @@ import {
   createElement,
   type IconNode,
   ArrowUp,
+  ArrowLeft,
   ArrowRight,
   RefreshCw,
   ChevronRight,
@@ -37,6 +38,7 @@ import {
   Pause,
   FileText,
   Upload,
+  Download,
 } from "lucide";
 
 export type IconOptions = {
@@ -76,6 +78,7 @@ export function setButtonIcon(
 
 export const AppIcons = {
   arrowUp: ArrowUp,
+  arrowLeft: ArrowLeft,
   arrowRight: ArrowRight,
   refreshCw: RefreshCw,
   chevronRight: ChevronRight,
@@ -107,4 +110,5 @@ export const AppIcons = {
   pause: Pause,
   fileText: FileText,
   upload: Upload,
+  download: Download,
 } as const;

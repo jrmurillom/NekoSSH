@@ -131,6 +131,7 @@ Definidos en `:root` y redefinidos en cada bloque `[data-theme="<id>"]`.
 - Hover/focus/active: cambio de color de borde/fondo o brightness — **no** glow.
 - Nunca colores fuera del token set sin actualizar este archivo.
 - Indicador de sesión de terminal (`.status-dot`): `connecting` (sakura light + pulse), `connected` (success), `disconnected` (muted), `error` (error). Copy de desconexión incluye hint Ctrl+R.
+- **Banner de progreso SFTP (`#files-status.is-progress`):** Durante operaciones activas de transferencia SFTP (Subida, Descarga o SCP), el banner de estado presenta un encabezado horizontal `.files-status-progress-header` (`display: flex; align-items: center; justify-content: space-between; gap: 6px`), una pista `.files-status-progress-track` (`height: 4px`) con barra de relleno plano `.files-status-progress-bar` (`background: var(--color-accent-primary)`, `transition: width 80ms linear`, **sin neon glow**), un detalle tabular de bytes/velocidad (`.files-status-progress-detail`), y un botón compacto de cancelación `.files-status-progress-cancel` (`[ ✕ ]`, `20px × 20px`, `aria-label="Cancelar transferencia"`, hover con `--color-status-danger`).
 
 ### Iconografía (Lucide outline)
 
@@ -151,17 +152,20 @@ Patrón canónico: **dialog glass centrado**.
 - Acciones: **Cancelar** (ghost / borde sutil) + acción primaria o destructiva.
 - Destructivo: fondo/borde `--color-error-neon` semitransparente (mismo espíritu que `.btn-danger`); no usar confirm nativo del OS (`window.confirm`) en chrome nuevo.
 - Tipografía: Outfit para título/cuerpo; Fira Code solo para líneas de impacto/meta.
-- **Prohibido:** diálogos nativos del sistema para flujos de producto; banners sueltos sobre el viewport de terminal como “confirm”.
+- **Prohibido:** diálogos nativos del sistema para flujos de confirmación de producto; banners sueltos sobre el viewport de terminal como “confirm”. **Excepciones autorizadas de selector de archivos nativo del SO (`rfd`):** únicamente para examinar el archivo local de llave privada en el modal de perfil y para elegir la ruta de destino local (**“Guardar como…”**, `rfd::FileDialog::save_file` en `sftp_pick_download_path`) al iniciar la descarga de un archivo SFTP.
 - **Sync edición externa (Fase 3):** mismo patrón A1 — título “Subir cambios”, cuerpo “¿Subir al servidor?”, detalle = **filename** por defecto + colapsable “ver ruta completa” (textarea readonly con path completo); primaria “Subir”. Aviso binario y errores de transfer también usan A1/`alertDialog`, nunca `window.confirm`.
+- **Cancelación de transferencia SFTP:** clic en `[ ✕ ]` del banner de progreso abre `confirmDialog` A1 (`title: "Cancelar transferencia"`, `confirmLabel: "Sí, cancelar"`, `cancelLabel: "Seguir transfiriendo"`, `danger: true`) mientras el streaming continúa en segundo plano; solo si el usuario confirma se aborta la transferencia y se limpia el `.nekossh.part`.
+- **Cierre masivo o direccional de pestañas de terminal:** cuando una acción del menú contextual de `.term-tab` (*Cerrar otras pestañas*, *Cerrar pestañas a la izquierda*, *Cerrar pestañas a la derecha*, *Cerrar todas las pestañas*) afecta a $\ge 2$ pestañas, se solicita una única confirmación `confirmDialog` A1 con el conteo exacto antes de desconectar el lote; si afecta a 1 sola pestaña conectada, delega en el diálogo individual de cierre de sesión.
 
 ### Menús contextuales
 
-Patrón canónico: **ítems con glifo/icono Lucide**, reutilizable en sidebar y explorador.
+Patrón canónico: **ítems con glifo/icono Lucide**, reutilizable en sidebar, explorador y pestañas de terminal (`.term-tab`).
 
 - Contenedor glass: mismos tokens de card que el dialog (`--bg-dark-card`, `--glass-border`, `--glass-shadow`, radius `--border-radius-md`).
 - Cada ítem: icono outline a la izquierda + label; padding compacto; sin pills ni multi-shadow.
 - **Hover / focus del ítem:** mismo rosa que el botón **“Nueva conexión”** (`.btn-primary` → token `--color-sakura-neon` / `#ff69b4`): fondo semitransparente derivado de ese token + texto `var(--color-sakura-neon)` — **no** `--color-sakura-light` pastel ni hover cian/eléctrico.
 - Ítem destructivo: texto/hover con `--color-error-neon` (semitransparente), separado del resto con un separator hairline sakura sutil si hay más de un grupo.
+- **Ítem deshabilitado (`.chrome-context-item.is-disabled`):** cuando una acción no es aplicable por contexto o posición (ej. *Cerrar pestañas a la izquierda* sobre la primera pestaña), el ítem se renderiza con `opacity: 0.42`, `cursor: not-allowed`, `pointer-events: none`, `aria-disabled="true"`, sin efecto hover y sin ejecutar `onSelect` ni cerrar el menú al hacer clic.
 - Iconos: Lucide outline + `currentColor` (ver § Iconografía).
 
 ### Scrollbars (chrome UI)

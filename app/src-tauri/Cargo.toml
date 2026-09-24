@@ -1,6 +1,6 @@
 [package]
 name = "app"
-version = "0.1.7"
+version = "0.1.8"
 description = "NekoSSH — cliente SSH de escritorio"
 authors = ["you"]
 edition = "2021"
@@ -28,3 +28,4 @@ rusqlite = { version = "0.31.0", features = ["bundled"] }
 notify = "6"
 uuid = { version = "1", features = ["v4"] }
 tauri-plugin-clipboard-manager = "2"
+rfd = "0.15"

@@ -6,6 +6,30 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
+## [0.1.8] - 2026-09-24
+
+### Added
+
+- **Descarga directa de archivos SFTP en streaming (`sftp-file-download-streaming`):**
+  - Añadida la opción **"Descargar"** (con icono Lucide `Download`) en el menú contextual de archivos remotos del explorador SFTP.
+  - Integrado selector nativo del sistema operativo **"Guardar como…"** (`rfd::FileDialog::save_file` vía `sftp_pick_download_path`) prellenado con el nombre del archivo remoto.
+  - Motor de descarga en streaming por bloques de `32 KiB` en memoria constante $O(1)$ hacia un archivo temporal oculto local (`.<nombre>.nekossh.part`), con validación de integridad de tamaño en bytes y renombrado atómico al destino final, **sin la restricción de `10 MiB`** exclusiva del flujo de edición externa.
+- **Telemetría de progreso SFTP en tiempo real (`sftp-transfer-progress-streaming`):**
+  - Refactorizada la subida de archivos (`sftp_upload_file`) a streaming desde disco en bloques de `64 KiB` hacia archivo temporal remoto `.nekossh.part` con vaciado de buffers (`flush`), bombeo continuo de PTY (`pump_pty`), verificación `sftp.stat()` y renombrado atómico.
+  - Canal IPC `tauri::ipc::Channel<TransferProgressEvent>` con *throttling* de `100ms` (porcentaje, bytes transferidos, bytes totales y velocidad en tiempo real) y barra de progreso unificada (`.files-status-progress-bar`) para **Descarga**, **Subida** y **Copiar/Pegar SCP**.
+- **Cancelación cooperativa de transferencias SFTP (`sftp-transfer-cancellation`):**
+  - Implementado `ActiveTransferRegistry` global con guardias RAII (`ActiveTransferGuard` en `Drop`) y banderas atómicas `Arc<AtomicBool>` por sesión y transferencia.
+  - Añadido botón compacto `[ ✕ ]` (`.files-status-progress-cancel`) en el banner de progreso con confirmación `confirmDialog` A1 (`"Cancelar transferencia"`, `"Sí, cancelar"` / `"Seguir transfiriendo"`) sin interrumpir la transferencia mientras el diálogo permanece abierto.
+  - Aborto cooperativo inmediato y eliminación automática de archivos parciales `.nekossh.part` (locales o remotos) al confirmar la cancelación, al cerrar la pestaña de sesión (`close_ssh_session`) o al salir de la aplicación (`RunEvent::Exit`).
+- **Menú contextual en pestañas de terminal (`terminal-tab-context-menu`):**
+  - Clic derecho sobre `.term-tab` con las 5 acciones estilo VS Code: *Cerrar pestaña*, *Cerrar otras pestañas*, *Cerrar pestañas a la izquierda*, *Cerrar pestañas a la derecha* y *Cerrar todas las pestañas* (`.is-danger`).
+  - Soporte de ítems deshabilitados (`disabled?: boolean` / `.chrome-context-item.is-disabled` con `aria-disabled="true"`) en `showContextMenu`, confirmación única `confirmDialog` cuando el cierre afecta a $\ge 2$ pestañas y transferencia automática de foco (`switchActiveTerminal`) a la pestaña clicada cuando la pestaña activa previa forma parte del conjunto cerrado.
+
+### Changed
+
+- **Sincronización de Single Source of Truth (SSOT):**
+  - Actualizados `docs/design/DESIGN.md`, `docs/design/ui-layout-contract.md`, `docs/project_scope.md` y las especificaciones maestras en `openspec/specs/` (`ui-overlays`, `sftp-explorer`, `terminal-layout`, `sftp-file-download`, `sftp-transfer-cancellation` y `terminal-tab-context-menu`).
+
 ## [0.1.7] - 2026-08-31
 
 ### Fixed

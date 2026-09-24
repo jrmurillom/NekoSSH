@@ -23,12 +23,14 @@ mod external_edit;
 
 use path_util::{join_remote_path, shell_quote};
 use edit_session::SharedEditSessions;
+use edit_util::ActiveTransferRegistry;
 use external_edit::{
     confirm_edit_upload, disconnect_edit_sessions_for_terminal, dismiss_edit_change,
     edit_session_upload_with_sudo, get_preferred_external_editor_cmd, manage_edit_state,
-    probe_external_edit, set_preferred_external_editor_cmd, sftp_download_file, sftp_upload_file,
+    probe_external_edit, set_preferred_external_editor_cmd, sftp_cancel_transfer,
+    sftp_copy_between_sessions, sftp_download_file, sftp_download_file_with_progress,
+    sftp_pick_download_path, sftp_read_remote_history_paged, sftp_upload_file,
     start_external_edit, stop_external_edit, sweep_orphans_on_startup, EditWatchers,
-    sftp_copy_between_sessions, sftp_read_remote_history_paged,
 };
 use preferences::ensure_app_preferences_schema;
 use theme_wallpapers::ThemeWallpaperDto;
@@ -984,6 +986,9 @@ async fn start_ssh_session(
                 };
 
                 if still_tracked {
+                    if let Some(transfers) = app_handle_read.try_state::<ActiveTransferRegistry>() {
+                        transfers.cancel_for_terminal(&term_id_read);
+                    }
                     if let (Some(edits), Some(watchers)) = (
                         app_handle_read.try_state::<SharedEditSessions>(),
                         app_handle_read.try_state::<EditWatchers>(),
@@ -1103,7 +1108,9 @@ async fn close_ssh_session(
     state: tauri::State<'_, SshConnections>,
     edits: tauri::State<'_, SharedEditSessions>,
     watchers: tauri::State<'_, EditWatchers>,
+    transfers: tauri::State<'_, ActiveTransferRegistry>,
 ) -> Result<(), String> {
+    transfers.cancel_for_terminal(&terminal_id);
     disconnect_edit_sessions_for_terminal(&app, &terminal_id, &edits, &watchers, true);
     let mut connections = state.0.lock().unwrap();
     remove_and_shutdown_ssh(&mut connections, &terminal_id);
@@ -1479,6 +1486,7 @@ pub fn run() {
 
     let app = tauri::Builder::default()
         .manage(SshConnections(Arc::new(Mutex::new(HashMap::new()))))
+        .manage(ActiveTransferRegistry::new())
         .manage(edit_sessions)
         .manage(edit_watchers)
         .plugin(tauri_plugin_opener::init())
@@ -1518,7 +1526,10 @@ pub fn run() {
             set_preferred_external_editor_cmd,
             probe_external_edit,
             sftp_download_file,
+            sftp_pick_download_path,
+            sftp_download_file_with_progress,
             sftp_upload_file,
+            sftp_cancel_transfer,
             start_external_edit,
             confirm_edit_upload,
             edit_session_upload_with_sudo,
@@ -1550,9 +1561,12 @@ pub fn run() {
         .expect("error while building tauri application");
 
     app.run(|app_handle, event| {
-        // Al salir o al pedir salida: cerrar todas las Sessions SSH vivas.
+        // Al salir o al pedir salida: cancelar transferencias SFTP activas, limpiar .nekossh.part locales y cerrar Sessions SSH vivas.
         match event {
             tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+                if let Some(transfers) = app_handle.try_state::<ActiveTransferRegistry>() {
+                    transfers.cancel_all_and_cleanup_local_parts();
+                }
                 if let Some(state) = app_handle.try_state::<SshConnections>() {
                     let ids: Vec<String> = {
                         let conns = state.0.lock().unwrap();

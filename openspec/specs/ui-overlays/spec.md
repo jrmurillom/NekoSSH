@@ -18,11 +18,15 @@ El chrome de producto SHALL usar un dialog glass centrado para confirmaciones de
 - **THEN** el dialog se cierra y no se ejecuta la acción destructiva
 
 ### Requirement: Menú contextual con iconos (B3)
-El sistema SHALL mostrar un menú contextual de chrome con ítems que incluyen icono Lucide outline + etiqueta. El hover/focus de ítems no destructivos MUST usar acento sakura (alineado al botón “Nueva conexión”), no cian. El menú MUST anclarse al origen del `contextmenu`, cerrarse con Escape o clic fuera, y no bloquear el viewport de terminal con badges sueltos.
+El sistema SHALL mostrar un menú contextual de chrome con ítems que incluyen icono Lucide outline + etiqueta. El hover/focus de ítems no destructivos habilitados MUST usar acento sakura (alineado al botón “Nueva conexión”), no cian. El componente `showContextMenu` SHALL soportar la propiedad opcional `disabled?: boolean` en cada `ContextMenuItem`, aplicando la clase `.chrome-context-item.is-disabled` y `aria-disabled="true"` e impidiendo la ejecución de `onSelect` o el cierre del menú al hacer clic sobre un ítem deshabilitado. El menú MUST anclarse al origen del `contextmenu`, cerrarse con Escape o clic fuera, y no bloquear el viewport de terminal con badges sueltos.
 
 #### Scenario: Hover sakura
-- **WHEN** el usuario desplaza el puntero sobre un ítem no destructivo del menú
+- **WHEN** el usuario desplaza el puntero sobre un ítem no destructivo habilitado del menú
 - **THEN** el ítem refleja hover sakura (fondo/texto) según tokens de diseño
+
+#### Scenario: Ítem de menú contextual deshabilitado
+- **WHEN** un `ContextMenuItem` se configura con `disabled: true` (ej. acción de pestaña en extremo izquierdo/derecho)
+- **THEN** el ítem se renderiza con clase `.is-disabled` (`aria-disabled="true"`, opacidad atenuada), no presenta efecto hover y hacer clic sobre él no dispara `onSelect` ni cierra el menú
 
 #### Scenario: Cerrar menú
 - **WHEN** el menú está abierto y el usuario pulsa Escape o hace clic fuera

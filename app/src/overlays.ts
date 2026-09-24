@@ -30,6 +30,7 @@ export type ContextMenuItem = {
   label: string;
   icon?: IconNode;
   danger?: boolean;
+  disabled?: boolean;
   separatorBefore?: boolean;
 };
 
@@ -276,8 +277,15 @@ export function showContextMenu(
       }
       const btn = document.createElement("button");
       btn.type = "button";
-      btn.className = "chrome-context-item" + (item.danger ? " is-danger" : "");
+      btn.className =
+        "chrome-context-item" +
+        (item.danger ? " is-danger" : "") +
+        (item.disabled ? " is-disabled" : "");
       btn.setAttribute("role", "menuitem");
+      if (item.disabled) {
+        btn.disabled = true;
+        btn.setAttribute("aria-disabled", "true");
+      }
       if (item.icon) {
         btn.appendChild(icon(item.icon, { size: 14, className: "icon--sm" }));
       }
@@ -286,6 +294,7 @@ export function showContextMenu(
       btn.appendChild(label);
       btn.addEventListener("click", (e) => {
         e.stopPropagation();
+        if (item.disabled) return;
         finish(item.id);
       });
       menu.appendChild(btn);

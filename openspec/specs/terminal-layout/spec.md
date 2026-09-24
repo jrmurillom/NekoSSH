@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Layout visual del área de terminal: fusión pestaña–panel con glow sakura, padding de seguridad frente al border-radius, cuadrícula interna de celdas y comportamiento nativo de los inputs del shell de la app.
+Layout visual del área de terminal: fusión pestaña–panel con glow sakura, padding de seguridad frente al border-radius, cuadrícula interna de celdas, interacción de pestañas `.term-tab` (incluyendo su menú contextual definido en [terminal-tab-context-menu/spec.md](file:///c:/Users/Roberto/Documents/antigravity/NekoSSH/openspec/specs/terminal-tab-context-menu/spec.md)) y comportamiento nativo de los inputs del shell de la app.
 
 ## Requirements
 
 ### Requirement: Unified Terminal Tabs Visual Layout
-La interfaz de terminal del cliente NekoSSH SHALL unificar visualmente la pestaña de sesión activa con el panel contenedor de la terminal, presentando un contorno continuo redondeado y con un glow sakura sutil.
+La interfaz de terminal del cliente NekoSSH SHALL unificar visualmente la pestaña de sesión activa con el panel contenedor de la terminal, presentando un contorno continuo redondeado y con un glow sakura sutil, además de exponer sobre cada `.term-tab` el menú contextual de gestión de pestañas especificado en [terminal-tab-context-menu/spec.md](file:///c:/Users/Roberto/Documents/antigravity/NekoSSH/openspec/specs/terminal-tab-context-menu/spec.md).
 
 #### Scenario: Fusión de Pestaña Activa y Consola
 - **WHEN** el usuario visualiza la terminal de una sesión SSH activa

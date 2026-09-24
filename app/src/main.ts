@@ -1,5 +1,5 @@
 // --- NekoSSH Frontend Controller (Cyber-Sakura Estética) ---
-import { invoke, convertFileSrc } from "@tauri-apps/api/core";
+import { invoke, convertFileSrc, Channel } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
@@ -28,6 +28,19 @@ import {
   resolveDropTarget,
   baseName,
 } from "./modules/explorer-drop-helper";
+import {
+  createExplorerStatusController,
+  isTransferCancelledError,
+  type ExplorerStatusController,
+  type TransferProgressPayload,
+} from "./modules/transfer-progress-helper";
+import {
+  buildBulkTabCloseConfirm,
+  buildTabContextMenuState,
+  resolveNextActiveTabAfterBulkClose,
+  resolveTabsToClose,
+  type TabContextMenuAction,
+} from "./modules/terminal-tab-menu-helper";
 import {
   BG_BY_THEME_KEY,
   DEFAULT_WALLPAPER_OPACITY,
@@ -485,13 +498,21 @@ let explorerDropzone: HTMLElement | null = null;
 let explorerDropzonePath: HTMLElement | null = null;
 let dragHighlightedRow: HTMLElement | null = null;
 let dragDropRegistered = false;
-let uploadInProgress = false;
+let transferInProgress = false;
+let transferCancelledByUser = false;
+let transferCancelConfirmOpen = false;
+let activeTransferGeneration = 0;
+let activeTransferMeta: {
+  operation: "download" | "upload" | "scp";
+  fileName: string;
+  terminalIds: string[];
+} | null = null;
+let explorerStatusController: ExplorerStatusController | null = null;
 let scpClipboard: {
   terminalId: string;
   path: string;
   name: string;
 } | null = null;
-let statusDismissTimer: ReturnType<typeof setTimeout> | null = null;
 
 // Terminal layout elements
 let mainDisplayArea: HTMLElement | null = null;
@@ -1131,7 +1152,7 @@ function initTabs() {
     if (!currentActiveTerminalId) return;
     hideContextMenu();
     const items = [];
-    if (scpClipboard && scpClipboard.terminalId !== currentActiveTerminalId) {
+    if (!transferInProgress && scpClipboard && scpClipboard.terminalId !== currentActiveTerminalId) {
       items.push({ id: "paste-scp", label: "Pegar scp", icon: AppIcons.clipboard });
     }
     if (items.length > 0) {
@@ -1143,29 +1164,188 @@ function initTabs() {
   });
 }
 
+async function requestCancelActiveTransfer() {
+  if (!transferInProgress || transferCancelConfirmOpen) return;
+  const meta = activeTransferMeta;
+  const fileName = meta?.fileName || "en curso";
+  const actionNoun =
+    meta?.operation === "download"
+      ? "descarga"
+      : meta?.operation === "scp"
+        ? "copia SCP"
+        : "subida";
+
+  transferCancelConfirmOpen = true;
+  try {
+    const confirmed = await confirmDialog({
+      title: "Cancelar transferencia",
+      message: `¿Detener la ${actionNoun} de "${fileName}"? El archivo parcial (.nekossh.part) se eliminará.`,
+      confirmLabel: "Sí, cancelar",
+      cancelLabel: "Seguir transfiriendo",
+      danger: true,
+    });
+    if (!confirmed || !transferInProgress) return;
+    transferCancelledByUser = true;
+    activeTransferGeneration += 1;
+    try {
+      await invoke("sftp_cancel_transfer");
+    } catch (err) {
+      console.error("Error al solicitar cancelación de transferencia SFTP:", err);
+    }
+    setExplorerStatus("Transferencia cancelada", false, false);
+  } finally {
+    transferCancelConfirmOpen = false;
+  }
+}
+
+function abortFrontendTransferForTerminal(terminalId: string) {
+  if (activeTransferMeta && activeTransferMeta.terminalIds.includes(terminalId)) {
+    transferCancelledByUser = true;
+    activeTransferGeneration += 1;
+    transferInProgress = false;
+    activeTransferMeta = null;
+    setExplorerStatus("");
+  }
+}
+
 async function handlePasteScp(targetDir: string) {
-  if (!scpClipboard || !currentActiveTerminalId) return;
-  const targetPath = (targetDir.endsWith("/") ? targetDir : targetDir + "/") + scpClipboard.name;
+  if (transferInProgress || !scpClipboard || !currentActiveTerminalId) return;
+  const clip = scpClipboard;
+  const targetTerminalId = currentActiveTerminalId;
+  const targetPath = (targetDir.endsWith("/") ? targetDir : targetDir + "/") + clip.name;
   const ok = await confirmDialog({
     title: "Pegar scp",
-    message: `¿Copiar "${scpClipboard.name}" a "${targetPath}"?`,
+    message: `¿Copiar "${clip.name}" a "${targetPath}"?`,
     confirmLabel: "Copiar",
   });
-  if (!ok) return;
+  if (!ok || transferInProgress) return;
 
-  setExplorerStatus(`Copiando ${scpClipboard.name}…`);
+  transferInProgress = true;
+  transferCancelledByUser = false;
+  activeTransferGeneration += 1;
+  const myGen = activeTransferGeneration;
+  activeTransferMeta = {
+    operation: "scp",
+    fileName: clip.name,
+    terminalIds: [clip.terminalId, targetTerminalId],
+  };
+
+  setExplorerTransferProgress({
+    operation: "scp",
+    file_name: clip.name,
+    bytes_transferred: 0,
+    total_bytes: 0,
+    percent: 0,
+    speed_bps: 0,
+  });
+
+  const onProgress = new Channel<TransferProgressPayload>();
+  onProgress.onmessage = (payload) => {
+    if (activeTransferGeneration !== myGen || transferCancelledByUser) return;
+    setExplorerTransferProgress(payload);
+  };
+
   try {
     await invoke("sftp_copy_between_sessions", {
-      sourceTerminalId: scpClipboard.terminalId,
-      sourcePath: scpClipboard.path,
-      targetTerminalId: currentActiveTerminalId,
+      sourceTerminalId: clip.terminalId,
+      sourcePath: clip.path,
+      targetTerminalId,
       targetPath,
+      onProgress,
     });
-    setExplorerStatus(`Copia exitosa: ${scpClipboard.name}`, false, true);
-    await refreshExplorerForActiveTerminal(true);
+    if (activeTransferGeneration === myGen && !transferCancelledByUser) {
+      setExplorerStatus(`Copia exitosa: ${clip.name}`, false, true);
+      await refreshExplorerForActiveTerminal(true);
+    }
   } catch (err) {
+    if (transferCancelledByUser || isTransferCancelledError(err)) {
+      if (activeTransferGeneration === myGen) {
+        setExplorerStatus("Transferencia cancelada", false, false);
+      }
+      return;
+    }
     console.error("Error al copiar scp:", err);
     setExplorerStatus(`Error al copiar: ${err}`, true);
+  } finally {
+    if (activeTransferGeneration === myGen || transferCancelledByUser) {
+      transferInProgress = false;
+      activeTransferMeta = null;
+    }
+  }
+}
+
+async function handleDownloadFile(node: ExplorerNodeState) {
+  if (node.isDir || transferInProgress || !currentActiveTerminalId) return;
+  const terminalId = currentActiveTerminalId;
+
+  transferInProgress = true;
+  transferCancelledByUser = false;
+  activeTransferGeneration += 1;
+  const myGen = activeTransferGeneration;
+
+  try {
+    let localPath: string | null = null;
+    try {
+      localPath = await invoke<string | null>("sftp_pick_download_path", {
+        defaultName: node.name,
+      });
+    } catch (err) {
+      console.error("Error al elegir ruta de descarga:", err);
+      setExplorerStatus(`Error al abrir selector de guardado: ${err}`, true);
+      return;
+    }
+
+    if (!localPath || activeTransferGeneration !== myGen) {
+      return;
+    }
+
+    const targetDisplayName = baseName(localPath) || node.name;
+    activeTransferMeta = {
+      operation: "download",
+      fileName: targetDisplayName,
+      terminalIds: [terminalId],
+    };
+
+    setExplorerTransferProgress({
+      operation: "download",
+      file_name: targetDisplayName,
+      bytes_transferred: 0,
+      total_bytes: 0,
+      percent: 0,
+      speed_bps: 0,
+    });
+
+    const onProgress = new Channel<TransferProgressPayload>();
+    onProgress.onmessage = (payload) => {
+      if (activeTransferGeneration !== myGen || transferCancelledByUser) return;
+      setExplorerTransferProgress(payload);
+    };
+
+    try {
+      await invoke("sftp_download_file_with_progress", {
+        terminalId,
+        remotePath: node.path,
+        localPath,
+        onProgress,
+      });
+      if (activeTransferGeneration === myGen && !transferCancelledByUser) {
+        setExplorerStatus(`Descarga completa: ${targetDisplayName}`, false, true);
+      }
+    } catch (err) {
+      if (transferCancelledByUser || isTransferCancelledError(err)) {
+        if (activeTransferGeneration === myGen) {
+          setExplorerStatus("Transferencia cancelada", false, false);
+        }
+        return;
+      }
+      console.error("Error al descargar archivo SFTP:", err);
+      setExplorerStatus(`Error al descargar: ${err}`, true);
+    }
+  } finally {
+    if (activeTransferGeneration === myGen || transferCancelledByUser) {
+      transferInProgress = false;
+      activeTransferMeta = null;
+    }
   }
 }
 
@@ -1259,7 +1439,7 @@ async function handleExplorerDrop(x: number, y: number, paths: string[]) {
 }
 
 async function runExplorerUpload(localPaths: string[], dest: string) {
-  if (uploadInProgress) return;
+  if (transferInProgress) return;
   const terminalId = currentActiveTerminalId;
   if (!terminalId) return;
 
@@ -1270,73 +1450,130 @@ async function runExplorerUpload(localPaths: string[], dest: string) {
     confirmLabel: "Subir",
     cancelLabel: "Cancelar",
   });
-  if (!ok) return;
+  if (!ok || transferInProgress) return;
 
-  let existingNames = new Set<string>();
+  transferInProgress = true;
+  transferCancelledByUser = false;
+  activeTransferGeneration += 1;
+  const myGen = activeTransferGeneration;
+  setExplorerStatus("Verificando destino…");
   try {
-    const entries = await invoke<SftpDirEntry[]>("sftp_list_dir", {
-      terminalId,
-      path: dest,
-    });
-    existingNames = new Set(entries.map((e) => e.name));
-  } catch (err) {
-    console.error("No se pudo listar el destino para detectar colisiones:", err);
-  }
-
-  const collisions = new Set(detectCollisions(localPaths, existingNames));
-  const toUpload: string[] = [];
-  for (const p of localPaths) {
-    const name = baseName(p);
-    if (collisions.has(name)) {
-      const replace = await confirmDialog({
-        title: "Reemplazar archivo",
-        message: `Ya existe "${name}" en el destino. ¿Reemplazar?`,
-        detailFilename: name,
-        detailFullPath: joinRemote(dest, name),
-        confirmLabel: "Reemplazar",
-        cancelLabel: "Omitir",
-        danger: true,
-      });
-      if (!replace) continue;
-    }
-    toUpload.push(p);
-  }
-
-  if (toUpload.length === 0) {
-    setExplorerStatus("Subida cancelada");
-    return;
-  }
-
-  uploadInProgress = true;
-  const failed: string[] = [];
-  let index = 0;
-  for (const p of toUpload) {
-    const name = baseName(p);
-    setExplorerStatus(`Subiendo ${name} (${index + 1}/${toUpload.length})…`);
+    let existingNames = new Set<string>();
     try {
-      await invoke("sftp_upload_file", {
+      const entries = await invoke<SftpDirEntry[]>("sftp_list_dir", {
         terminalId,
-        localPath: p,
-        remotePath: joinRemote(dest, name),
+        path: dest,
       });
+      existingNames = new Set(entries.map((e) => e.name));
     } catch (err) {
-      console.error("Error al subir", p, err);
-      failed.push(name);
+      console.error("No se pudo listar el destino para detectar colisiones:", err);
     }
-    index++;
-  }
-  uploadInProgress = false;
 
-  const uploaded = toUpload.length - failed.length;
-  if (failed.length === 0) {
-    setExplorerStatus(`Subida completa: ${uploaded} archivo(s)`, false, true);
-  } else {
-    setExplorerStatus(
-      `Subidos ${uploaded}, fallaron ${failed.length}: ${failed.join(", ")}`,
-      true,
-    );
+    const collisions = new Set(detectCollisions(localPaths, existingNames));
+    const toUpload: string[] = [];
+    for (const p of localPaths) {
+      const name = baseName(p);
+      if (collisions.has(name)) {
+        const replace = await confirmDialog({
+          title: "Reemplazar archivo",
+          message: `Ya existe "${name}" en el destino. ¿Reemplazar?`,
+          detailFilename: name,
+          detailFullPath: joinRemote(dest, name),
+          confirmLabel: "Reemplazar",
+          cancelLabel: "Omitir",
+          danger: true,
+        });
+        if (!replace) continue;
+      }
+      toUpload.push(p);
+    }
+
+    if (toUpload.length === 0) {
+      setExplorerStatus("Subida cancelada");
+      return;
+    }
+
+    const failed: string[] = [];
+    let uploaded = 0;
+    let index = 0;
+    for (const p of toUpload) {
+      if (transferCancelledByUser || activeTransferGeneration !== myGen) {
+        break;
+      }
+      const name = baseName(p);
+      const batchIndex = index + 1;
+      const batchTotal = toUpload.length;
+
+      activeTransferMeta = {
+        operation: "upload",
+        fileName: name,
+        terminalIds: [terminalId],
+      };
+
+      setExplorerTransferProgress(
+        {
+          operation: "upload",
+          file_name: name,
+          bytes_transferred: 0,
+          total_bytes: 0,
+          percent: 0,
+          speed_bps: 0,
+        },
+        batchIndex,
+        batchTotal,
+      );
+
+      const onProgress = new Channel<TransferProgressPayload>();
+      onProgress.onmessage = (payload) => {
+        if (activeTransferGeneration !== myGen || transferCancelledByUser) return;
+        setExplorerTransferProgress(payload, batchIndex, batchTotal);
+      };
+
+      try {
+        await invoke("sftp_upload_file", {
+          terminalId,
+          localPath: p,
+          remotePath: joinRemote(dest, name),
+          onProgress,
+        });
+        uploaded += 1;
+      } catch (err) {
+        if (transferCancelledByUser || isTransferCancelledError(err)) {
+          if (activeTransferGeneration === myGen) {
+            setExplorerStatus("Transferencia cancelada", false, false);
+          }
+          if (uploaded > 0) await refreshExplorerForActiveTerminal(true);
+          return;
+        }
+        console.error("Error al subir", p, err);
+        failed.push(name);
+      }
+      index++;
+    }
+
+    if (transferCancelledByUser) {
+      if (activeTransferGeneration === myGen) {
+        setExplorerStatus("Transferencia cancelada", false, false);
+      }
+      if (uploaded > 0) await refreshExplorerForActiveTerminal(true);
+      return;
+    }
+
+    if (failed.length === 0) {
+      setExplorerStatus(`Subida completa: ${uploaded} archivo(s)`, false, true);
+    } else {
+      setExplorerStatus(
+        `Subidos ${uploaded}, fallaron ${failed.length}: ${failed.join(", ")}`,
+        true,
+      );
+    }
+    if (uploaded > 0) await refreshExplorerForActiveTerminal(true);
+  } finally {
+    if (activeTransferGeneration === myGen || transferCancelledByUser) {
+      transferInProgress = false;
+      activeTransferMeta = null;
+    }
   }
-  if (uploaded > 0) await refreshExplorerForActiveTerminal(true);
 }
 
 async function initExplorerDragDrop() {
@@ -1389,41 +1626,32 @@ function parentRemotePath(path: string): string | null {
   return parts.length === 0 ? "/" : `/${parts.join("/")}`;
 }
 
+function ensureExplorerStatusController(): ExplorerStatusController | null {
+  if (!filesStatus) return null;
+  if (!explorerStatusController) {
+    explorerStatusController = createExplorerStatusController(filesStatus, {
+      onCancelRequest: () => {
+        void requestCancelActiveTransfer();
+      },
+    });
+  }
+  return explorerStatusController;
+}
+
+function setExplorerTransferProgress(
+  payload: TransferProgressPayload,
+  batchIndex?: number,
+  batchTotal?: number,
+) {
+  ensureExplorerStatusController()?.setTransferProgress(
+    payload,
+    batchIndex,
+    batchTotal,
+  );
+}
+
 function setExplorerStatus(message: string, isError = false, isSuccess = false) {
-  if (!filesStatus) return;
-  if (statusDismissTimer) {
-    clearTimeout(statusDismissTimer);
-    statusDismissTimer = null;
-  }
-  if (!message) {
-    filesStatus.classList.remove("is-visible", "error", "success");
-    filesStatus.textContent = "";
-    filesStatus.setAttribute("title", "");
-    return;
-  }
-
-  let displayMessage = message;
-  if (isSuccess) {
-    displayMessage = `✅ ${message}`;
-  } else if (isError) {
-    displayMessage = `❌ ${message}`;
-  }
-
-  filesStatus.textContent = displayMessage;
-  filesStatus.setAttribute("title", displayMessage);
-  filesStatus.classList.toggle("error", isError);
-  filesStatus.classList.toggle("success", isSuccess);
-  filesStatus.classList.add("is-visible");
-  
-  if (!isError) {
-    statusDismissTimer = setTimeout(() => {
-      filesStatus!.classList.remove("is-visible");
-      setTimeout(() => {
-        filesStatus!.classList.remove("error", "success");
-      }, 300);
-      statusDismissTimer = null;
-    }, 3000);
-  }
+  ensureExplorerStatusController()?.setStatus(message, isError, isSuccess);
 }
 
 function updateUpButton() {
@@ -1723,7 +1951,7 @@ function buildExplorerNodeEl(
     hideContextMenu();
     if (node.isDir) {
       const items = [{ id: "open-terminal", label: "Abrir en Terminal", icon: AppIcons.terminal }];
-      if (scpClipboard && scpClipboard.terminalId !== currentActiveTerminalId) {
+      if (!transferInProgress && scpClipboard && scpClipboard.terminalId !== currentActiveTerminalId) {
         items.push({ id: "paste-scp", label: "Pegar scp", icon: AppIcons.clipboard });
       }
       const action = await showContextMenu(ev.clientX, ev.clientY, items);
@@ -1734,12 +1962,17 @@ function buildExplorerNodeEl(
       }
       return;
     }
-    const action = await showContextMenu(ev.clientX, ev.clientY, [
-      { id: "edit", label: "Editar", icon: AppIcons.pencil },
-      { id: "copy-scp", label: "Copiar scp", icon: AppIcons.clipboard },
-    ]);
+    const fileItems = [{ id: "edit", label: "Editar", icon: AppIcons.pencil }];
+    if (!transferInProgress) {
+      fileItems.push({ id: "download", label: "Descargar", icon: AppIcons.download });
+    }
+    fileItems.push({ id: "copy-scp", label: "Copiar scp", icon: AppIcons.clipboard });
+
+    const action = await showContextMenu(ev.clientX, ev.clientY, fileItems);
     if (action === "edit") {
       void beginExternalEdit(node);
+    } else if (action === "download") {
+      void handleDownloadFile(node);
     } else if (action === "copy-scp") {
       if (currentActiveTerminalId) {
         scpClipboard = { terminalId: currentActiveTerminalId, path: node.path, name: node.name };
@@ -2137,6 +2370,7 @@ function setTerminalConnectionStatus(
 
 /** Padre caído: el contexto queda offline y no se dejan hijos huérfanos sin SFTP. */
 function handleParentShellDown(ctx: ActiveTerminal) {
+  abortFrontendTransferForTerminal(ctx.id);
   void closeChildShellsOf(ctx);
   if (ctx.id === currentActiveTerminalId || ctx.id === explorerBoundTerminalId) {
     showExplorerEmpty("Conecta un servidor para explorar archivos remotos.");
@@ -3204,6 +3438,12 @@ function startNewSshConnection(profile: ConnectionProfile) {
     }
   });
 
+  tabEl.addEventListener("contextmenu", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    void handleTerminalTabContextMenu(e, terminalId);
+  });
+
   terminalTabsList?.appendChild(tabEl);
 
   // 2. Crear Contenedor del Emulador
@@ -3417,6 +3657,9 @@ async function closeTerminalSession(terminalId: string, skipConfirm = false) {
     if (!ok) return;
   }
 
+  // Invalidar cualquier transferencia SFTP en curso ligada a esta terminal antes de cerrar el socket
+  abortFrontendTransferForTerminal(terminalId);
+
   // Cerrar primero los shells hijos: el contexto se va completo con la pestaña.
   await closeChildShellsOf(activeTerm);
 
@@ -3484,6 +3727,87 @@ async function closeAllTerminals() {
   // Secuencial: cada close apaga la Session en backend antes de la siguiente.
   for (const id of ids) {
     await closeTerminalSession(id, true);
+  }
+}
+
+async function handleTerminalTabContextMenu(ev: MouseEvent, terminalId: string) {
+  const orderedIds = Array.from(activeTerminals.keys());
+  const descriptors = buildTabContextMenuState(orderedIds, terminalId);
+
+  const iconByAction: Record<TabContextMenuAction, (typeof AppIcons)[keyof typeof AppIcons]> = {
+    close: AppIcons.x,
+    "close-others": AppIcons.x,
+    "close-left": AppIcons.arrowLeft,
+    "close-right": AppIcons.arrowRight,
+    "close-all": AppIcons.trash2,
+  };
+
+  const items = descriptors.map((desc) => ({
+    id: desc.id,
+    label: desc.label,
+    icon: iconByAction[desc.id],
+    disabled: desc.disabled,
+    danger: desc.danger,
+    separatorBefore: desc.separatorBefore,
+  }));
+
+  const action = (await showContextMenu(
+    ev.clientX,
+    ev.clientY,
+    items,
+  )) as TabContextMenuAction | null;
+  if (!action) return;
+
+  if (action === "close") {
+    await closeTerminalSession(terminalId);
+    return;
+  }
+  if (action === "close-all") {
+    await closeAllTerminals();
+    return;
+  }
+  await closeTerminalTabsSubset(terminalId, action);
+}
+
+async function closeTerminalTabsSubset(
+  targetTerminalId: string,
+  action: Exclude<TabContextMenuAction, "close">,
+) {
+  const orderedIds = Array.from(activeTerminals.keys());
+  const idsToClose = resolveTabsToClose(orderedIds, targetTerminalId, action);
+  if (idsToClose.length === 0) return;
+
+  const connectedCount = idsToClose.filter((id) => {
+    const term = activeTerminals.get(id);
+    return term ? term.panes.some((pane) => pane.isConnected) : false;
+  }).length;
+
+  if (connectedCount > 0) {
+    const confirmSpec = buildBulkTabCloseConfirm(
+      action,
+      idsToClose.length,
+      connectedCount,
+    );
+    const ok = await confirmDialog(confirmSpec);
+    if (!ok) return;
+  }
+
+  const desiredActiveId = resolveNextActiveTabAfterBulkClose(
+    currentActiveTerminalId,
+    targetTerminalId,
+    idsToClose,
+  );
+
+  for (const id of idsToClose) {
+    await closeTerminalSession(id, true);
+  }
+
+  if (
+    desiredActiveId &&
+    activeTerminals.has(desiredActiveId) &&
+    currentActiveTerminalId !== desiredActiveId
+  ) {
+    switchActiveTerminal(desiredActiveId);
   }
 }
 

@@ -40,13 +40,15 @@ Este documento define el alcance, stack tecnológico y las fases de desarrollo p
 
 ### 📋 Fase 2: Conexión SFTP y Explorador de Archivos Sincronizado
 * **Canales Concurrentes**:
-  - Establecimiento de dos conexiones SSH en paralelo por servidor (una para terminal e interactividad en tiempo real y otra dedicada a SFTP) para evitar lag o bloqueos en la terminal.
-* **Explorador de Archivos Visual**:
-  - Estructuración de árbol de directorios remotos en el panel lateral.
-  - **Arrastrar y soltar para subir**: arrastrar archivos locales sobre el panel Archivos muestra un overlay (derivado de los tokens del tema) con la ruta destino; carpeta bajo el cursor → esa carpeta, archivo → su carpeta contenedora, fondo → ruta actual. Al soltar se pide **siempre** confirmación A1 (nombre o cantidad + destino) y confirmación aparte por sobreescritura; la subida es secuencial, tolera fallos individuales y refresca al terminar.
-* **Sincronización Bidireccional (Explorer ⇄ Terminal)**:
-  - Sincronización del explorador de archivos para que siga la ruta remota activa cuando se realice navegación (`cd`) en la terminal.
-  - Opción de "Abrir en Terminal" en el explorador de archivos mediante menú contextual para forzar un `cd` hacia esa ruta en la terminal abierta.
+  - Establecimiento de sesiones multiplexadas con bombeo continuo del PTY (`pump_pty`) durante las lecturas/escrituras SFTP para evitar bloqueos o desconexiones en la terminal.
+* **Explorador de Archivos Visual y Transferencias en Streaming**:
+  - Estructuración de árbol de directorios remotos en el panel lateral con filtro por nombre en memoria.
+  - **Arrastrar y soltar / Botón Subir**: arrastrar archivos locales sobre el panel Archivos muestra un overlay (derivado de los tokens del tema) con la ruta destino; carpeta bajo el cursor → esa carpeta, archivo → su carpeta contenedora, fondo → ruta actual. Al soltar se pide **siempre** confirmación A1 (nombre o cantidad + destino) y confirmación aparte por sobreescritura; la subida es en streaming de `64 KiB` hacia archivo temporal `.nekossh.part` + verificación `sftp.stat()` + rename atómico, tolera fallos individuales y refresca al terminar.
+  - **Descarga directa de archivos (`Descargar`)**: opción en el menú contextual de archivos que abre el diálogo nativo `"Guardar como..."` (`rfd`) y descarga en streaming de `32 KiB` hacia un archivo temporal local `.nekossh.part` con validación de integridad y rename atómico al destino final, **sin el límite de `10 MiB`** exclusivo de la edición externa.
+  - **Telemetría de progreso en vivo y cancelación cooperativa**: tanto la Descarga, la Subida como el flujo **Copiar/Pegar SCP** emiten telemetría con throttling de `100ms` (`Channel<TransferProgressEvent>`), mostrando una barra de progreso unificada con porcentaje, bytes y velocidad, acompañada de un botón `[ ✕ ]` (con confirmación `confirmDialog` A1) y cancelación cooperativa automática (`ActiveTransferRegistry`) con limpieza de `.nekossh.part` si el usuario cierra la pestaña o sale de la aplicación.
+  - **Gestión avanzada de pestañas de sesión**: menú contextual estilo VS Code sobre `.term-tab` (*Cerrar pestaña*, *Cerrar otras pestañas*, *Cerrar pestañas a la izquierda*, *Cerrar pestañas a la derecha*, *Cerrar todas las pestañas*).
+* **Sincronización (Explorer ⇄ Terminal)**:
+  - Sincronización inicial vía **OSC 7** y opción de "Abrir en Terminal" en el explorador de archivos mediante menú contextual para enviar un `cd` hacia esa ruta en el PTY padre del contexto activo.
 
 ---
 
