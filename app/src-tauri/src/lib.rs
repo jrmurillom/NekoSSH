@@ -7,7 +7,7 @@ use std::path::Path as FsPath;
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
 use std::io::{Read, Write};
-use ssh2::{MethodType, Session};
+use ssh2::Session;
 
 mod path_util;
 mod osc7; // tests unitarios del parser; sync de producto fuera de alcance
@@ -19,6 +19,7 @@ pub mod edit_session;
 pub mod fake_sftp;
 pub mod elevated_upload;
 pub mod notes;
+pub mod ssh_negotiation;
 mod external_edit;
 
 use path_util::{join_remote_path, shell_quote};
@@ -774,23 +775,8 @@ fn authenticate_session_once(
     // Timeout solo para el handshake/auth; se apaga al terminar.
     sess.set_timeout(20_000);
 
-    // Preferir KEX moderno y evitar dh-gex (falla frecuente con backends Windows).
-    let _ = sess.method_pref(
-        MethodType::Kex,
-        "curve25519-sha256,curve25519-sha256@libssh.org,ecdh-sha2-nistp256,ecdh-sha2-nistp384,ecdh-sha2-nistp521,diffie-hellman-group14-sha256,diffie-hellman-group16-sha512,diffie-hellman-group14-sha1",
-    );
-    let _ = sess.method_pref(
-        MethodType::CryptCs,
-        "aes256-ctr,aes192-ctr,aes128-ctr,chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com",
-    );
-    let _ = sess.method_pref(
-        MethodType::CryptSc,
-        "aes256-ctr,aes192-ctr,aes128-ctr,chacha20-poly1305@openssh.com,aes256-gcm@openssh.com,aes128-gcm@openssh.com",
-    );
-    let _ = sess.method_pref(
-        MethodType::HostKey,
-        "ssh-ed25519,ecdsa-sha2-nistp256,ecdsa-sha2-nistp384,ecdsa-sha2-nistp521,rsa-sha2-512,rsa-sha2-256,ssh-rsa",
-    );
+    // Configuración modular de algoritmos criptográficos (KEX, Ciphers, HostKey y MAC)
+    ssh_negotiation::configure_session_methods(&mut sess)?;
 
     sess.set_tcp_stream(tcp);
     sess.handshake()

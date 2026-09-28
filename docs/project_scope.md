@@ -34,6 +34,7 @@ Este documento define el alcance, stack tecnológico y las fases de desarrollo p
     - Configuración de túneles SSH (Local y Dinámico/SOCKS Proxy).
 * **Motor SSH**:
   - Implementación en Rust para establecer la conexión básica utilizando los perfiles guardados.
+  - Negociación criptográfica modular (`ssh_negotiation.rs`): matriz completa de KEX (Curve25519, DH Group 16/14, DH-GEX), Ciphers (AES-GCM, ChaCha20, AES-CTR, y fallback a AES-CBC/3DES para servidores legacy y cPanel) y MACs (SHA-2/SHA-1), con prioridad estricta de seguridad.
   - Integración de `xterm.js` en el frontend y paso bidireccional de entrada/salida de comandos.
 
 ---
