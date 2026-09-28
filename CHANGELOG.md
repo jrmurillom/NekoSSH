@@ -6,6 +6,18 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
+## [0.1.9] - 2026-09-28
+
+### Added
+
+- **Negociación criptográfica modular SSH (`ssh-negotiation-compat`):**
+  - Creado módulo dedicado `app/src-tauri/src/ssh_negotiation.rs` desacoplando la configuración criptográfica de `lib.rs`.
+  - Ampliada la matriz de algoritmos KEX incorporando `diffie-hellman-group-exchange-sha256`, `diffie-hellman-group-exchange-sha1` y fallback a `diffie-hellman-group14-sha1`.
+  - Añadido soporte de cifrados CBC (`aes256-cbc`, `aes192-cbc`, `aes128-cbc`, `3des-cbc`) como fallback al final de la lista, resolviendo el error `[Session(-5)] Unable to exchange encryption keys` en servidores legacy, CentOS y paneles cPanel.
+  - Configuración explícita de algoritmos MAC priorizando variantes HMAC con SHA-2 y fallback ordenado.
+  - Jerarquía estricta de seguridad: algoritmos elípticos y AEAD/CTR (`Curve25519`, `ChaCha20-Poly1305`, `AES-GCM`, `AES-CTR`) siempre mantienen prioridad absoluta al frente de cada lista.
+  - Suite de 5 pruebas unitarias deterministas en Rust que certifican la precedencia, ausencia de duplicados y compatibilidad en Windows sin errores de API.
+
 ## [0.1.8] - 2026-09-24
 
 ### Added
