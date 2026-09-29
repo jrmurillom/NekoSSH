@@ -50,6 +50,7 @@ import {
   parseThemeWallpaperMap,
   type ThemeWallpaper,
 } from "./modules/theme-wallpaper-helper";
+import { buildTerminalOptions } from "./modules/terminal-options-helper";
 import logoNekossh from "./assets/logos/nekossh.png";
 import logoHatsuneMiku from "./assets/logos/hatsune-miku.png";
 import logoReiAyanami from "./assets/logos/rei-ayanami.png";
@@ -3140,14 +3141,13 @@ function createShellPane(
   const monoFontFamily =
     getComputedStyle(document.documentElement).getPropertyValue("--font-mono").trim() ||
     "monospace";
-  const term = new Terminal({
-    allowTransparency: true,
-    cursorBlink: true,
-    cursorStyle: "block",
-    theme: { ...(THEME_TERMINAL_COLORS[getActiveTheme()] || THEME_TERMINAL_COLORS["nekossh"]) },
-    fontFamily: monoFontFamily,
-    fontSize: 14,
-  });
+  const term = new Terminal(
+    buildTerminalOptions({
+      theme: THEME_TERMINAL_COLORS[getActiveTheme()] || THEME_TERMINAL_COLORS["nekossh"],
+      fontFamily: monoFontFamily,
+      fontSize: 14,
+    }),
+  );
 
   const fitAddon = new FitAddon();
   term.loadAddon(fitAddon);

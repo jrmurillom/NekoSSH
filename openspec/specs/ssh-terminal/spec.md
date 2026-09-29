@@ -3,9 +3,7 @@
 ## Purpose
 
 Emulación de terminal interactiva con xterm.js, estilo Cyber-Sakura (acentos planos) y sesión SSH bidireccional vía backend Rust.
-
 ## Requirements
-
 ### Requirement: Emulación de Terminal Visual Cyber-Sakura
 El sistema SHALL inicializar una terminal interactiva utilizando `xterm.js` y `xterm-addon-fit` con el estilo visual Cyber-Sakura (fondo oscuro opaco en el viewport de terminal, cursor block sakura parpadeante con acento de color plano, sin neon glow).
 
@@ -145,3 +143,15 @@ Al cerrar una pestaña de terminal, el sistema SHALL liberar la Session del shel
 #### Scenario: Confirmación al cerrar pestaña con cualquier Session viva
 - **WHEN** el usuario intenta cerrar la pestaña y el padre o algún hijo tiene `isConnected === true`
 - **THEN** el sistema MUST mostrar el diálogo de confirmación glass antes de desconectar el contexto
+
+### Requirement: Capacidad y Retención de Buffer de Scrollback
+El sistema SHALL configurar cada instancia del emulador `Terminal` con una capacidad de retención de scrollback de al menos 10,000 líneas (`scrollback: 10000`). Todas las terminales creadas en el frontend (tanto el shell principal como cualquier shell secundario o hijo en el contexto de pestaña) MUST preservar hasta 10,000 líneas de historial acumulado en el buffer para permitir la inspección de salidas extensas de comandos y logs remotos sin truncamiento prematuro.
+
+#### Scenario: Retención de salida extensa superior a 1,000 líneas
+- **WHEN** un comando en el shell remoto emite una salida continua que excede las 1,000 líneas (por ejemplo `tail -n2000`)
+- **THEN** el buffer del emulador retiene la totalidad de las 2,000 líneas y el usuario puede desplazarse hacia arriba hasta el inicio de dicha salida sin pérdida de datos
+
+#### Scenario: Límite máximo de buffer fijado en 10,000 líneas
+- **WHEN** la salida continua del shell remoto excede las 10,000 líneas en el buffer
+- **THEN** el emulador xterm.js descarta de forma circular únicamente las líneas que exceden las 10,000 líneas retenidas en el historial previo, garantizando estabilidad y consumo de memoria controlado
+

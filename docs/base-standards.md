@@ -18,6 +18,7 @@ Este documento es la **fuente de verdad** de principios, idioma, TDD y enlaces a
 5. **Cambios incrementales** — diffs enfocados y revisables.
 6. **Código de aplicación solo en `app/`** — raíz del repo para `docs/`, `openspec/`, agentes y scripts.
 7. **Estilo de Aplicación Nativa (Desactivar Autocompletado)** — Todos los campos `<input>` de texto, número o búsqueda en el frontend SHALL incluir el atributo `autocomplete="off"` de forma explícita para evitar que la WebView guarde historial de autocompletado y superponga desplegables del navegador sobre la interfaz.
+8. **Capacidad de Scrollback en Emuladores de Terminal** — Toda instancia de `@xterm/xterm` (shell principal o celdas secundarias en cuadrícula) SHALL configurarse con un buffer de scrollback de 10,000 líneas (`scrollback: 10000`) centralizado mediante `buildTerminalOptions`, asegurando retención profunda de logs remotos (`tail -n2000`, deploys) sin truncamiento prematuro.
 
 ---
 
