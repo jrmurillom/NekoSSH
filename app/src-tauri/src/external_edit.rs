@@ -29,6 +29,7 @@ use crate::elevated_upload::{
 use crate::preferences::{
     get_preferred_external_editor, set_preferred_external_editor,
 };
+use crate::path_util::parent_remote_path;
 use crate::{
     get_db_conn, is_would_block_ssh, LiveSsh, SshConnections, SshStdoutPayload,
 };
@@ -322,6 +323,122 @@ fn is_transfer_cancelled(cancel_flag: Option<&AtomicBool>) -> bool {
     cancel_flag.map_or(false, |f| f.load(Ordering::Acquire))
 }
 
+/// Asegura que el directorio remoto y todos sus ancestros existan en SFTP (emulando `mkdir -p`),
+/// de forma idempotente, verificando primero con `stat()` y creando con `mkdir(0o755)`.
+/// Bombea continuamente el PTY para evitar que el socket SSH quede inactivo o bloqueado.
+pub fn ensure_remote_dir_recursive(
+    app: &AppHandle,
+    terminal_id: &str,
+    live_arc: &Arc<Mutex<LiveSsh>>,
+    sftp: &ssh2::Sftp,
+    remote_dir: &str,
+    cancel_flag: Option<&AtomicBool>,
+) -> Result<(), String> {
+    if is_transfer_cancelled(cancel_flag) {
+        return Err(TRANSFER_CANCELLED_ERROR.to_string());
+    }
+
+    let clean = remote_dir.trim().replace('\\', "/");
+    if clean.is_empty() || clean == "/" || clean == "." {
+        return Ok(());
+    }
+
+    let is_absolute = clean.starts_with('/');
+    let parts: Vec<&str> = clean
+        .split('/')
+        .filter(|s| !s.is_empty() && *s != ".")
+        .collect();
+
+    let mut current = String::new();
+    let mut pump_buf = [0u8; 4096];
+
+    for part in parts {
+        if is_transfer_cancelled(cancel_flag) {
+            return Err(TRANSFER_CANCELLED_ERROR.to_string());
+        }
+
+        if is_absolute {
+            current.push('/');
+            current.push_str(part);
+        } else if current.is_empty() {
+            current.push_str(part);
+        } else {
+            current.push('/');
+            current.push_str(part);
+        }
+
+        let p = Path::new(&current);
+
+        // 1. Verificar si ya existe con stat()
+        let mut stat_attempts = 0;
+        let stat_res = loop {
+            if is_transfer_cancelled(cancel_flag) {
+                return Err(TRANSFER_CANCELLED_ERROR.to_string());
+            }
+            let res = {
+                let mut live = live_arc.lock().unwrap();
+                let pumped = pump_pty(&mut live, &mut pump_buf);
+                let st = sftp.stat(p);
+                (st, pumped)
+            };
+            emit_pump(app, terminal_id, &res.1);
+            match res.0 {
+                Ok(st) => break Ok(st),
+                Err(e) => {
+                    if stat_attempts < 200 && is_would_block_ssh(&e) {
+                        stat_attempts += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                        continue;
+                    }
+                    break Err(e);
+                }
+            }
+        };
+
+        if let Ok(st) = stat_res {
+            if st.is_dir() {
+                continue; // ya existe y es directorio
+            } else {
+                return Err(format!("'{}' ya existe pero no es un directorio", current));
+            }
+        }
+
+        // 2. Si no existe, intentar mkdir con 0o755
+        let mut mkdir_attempts = 0;
+        loop {
+            if is_transfer_cancelled(cancel_flag) {
+                return Err(TRANSFER_CANCELLED_ERROR.to_string());
+            }
+            let res = {
+                let mut live = live_arc.lock().unwrap();
+                let pumped = pump_pty(&mut live, &mut pump_buf);
+                let r = sftp.mkdir(p, 0o755);
+                (r, pumped)
+            };
+            emit_pump(app, terminal_id, &res.1);
+            match res.0 {
+                Ok(()) => break,
+                Err(e) => {
+                    if mkdir_attempts < 200 && is_would_block_ssh(&e) {
+                        mkdir_attempts += 1;
+                        std::thread::sleep(std::time::Duration::from_millis(5));
+                        continue;
+                    }
+                    // Si otro proceso concurrente ya lo creó, verificar de nuevo con stat
+                    if let Ok(st) = sftp.stat(p) {
+                        if st.is_dir() {
+                            break;
+                        }
+                    }
+                    return Err(format!("Error al crear directorio remoto '{}': {}", current, e));
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
 /// Sube/reemplaza archivo remoto en streaming de 64 KiB (memoria O(1)) con staging `.nekossh.part`,
 /// límite de reintentos en WouldBlock, verificación de tamaño, canal de progreso opcional y cancelación cooperativa.
 pub fn sftp_upload_file_blocking_with_progress(
@@ -344,6 +461,14 @@ pub fn sftp_upload_file_blocking_with_progress(
         .len();
 
     let sftp = open_sftp(app, terminal_id, live_arc)?;
+
+    // Asegurar que el directorio contenedor remoto exista antes de intentar crear el archivo o su staging
+    if let Some(parent) = parent_remote_path(remote_path) {
+        if parent != "/" && parent != "." && !parent.is_empty() {
+            ensure_remote_dir_recursive(app, terminal_id, live_arc, &sftp, &parent, cancel_flag)?;
+        }
+    }
+
     let mut pump_buf = [0u8; 4096];
 
     let file_name = remote_basename(remote_path);
@@ -1237,6 +1362,26 @@ pub async fn sftp_upload_file(
             Some(&on_progress),
             Some(guard.cancel_flag()),
         )
+    })
+    .await
+    .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn sftp_ensure_remote_dir(
+    app: AppHandle,
+    terminal_id: String,
+    remote_dir: String,
+    state: State<'_, SshConnections>,
+    transfers: State<'_, ActiveTransferRegistry>,
+) -> Result<(), String> {
+    let live_arc = with_live_ssh(&state, &terminal_id)?;
+    let guard = transfers.register(vec![terminal_id.clone()], None);
+    let app2 = app.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        let _keep_guard = &guard;
+        let sftp = open_sftp(&app2, &terminal_id, &live_arc)?;
+        ensure_remote_dir_recursive(&app2, &terminal_id, &live_arc, &sftp, &remote_dir, Some(guard.cancel_flag()))
     })
     .await
     .map_err(|e| e.to_string())?
