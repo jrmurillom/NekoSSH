@@ -24,9 +24,11 @@ import { resolveBrandLogoUrl } from "./modules/brand-logo-helper";
 import { computeVisibleNodes, isFilterActive } from "./modules/explorer-name-filter";
 import {
   detectCollisions,
-  formatUploadConfirm,
+  formatUploadPlanImpact,
+  filterPlanByExcludedRoots,
   resolveDropTarget,
   baseName,
+  type LocalUploadPlan,
 } from "./modules/explorer-drop-helper";
 import {
   createExplorerStatusController,
@@ -1444,10 +1446,28 @@ async function runExplorerUpload(localPaths: string[], dest: string) {
   const terminalId = currentActiveTerminalId;
   if (!terminalId) return;
 
+  setExplorerStatus("Analizando elementos a subir…");
+  let plan: LocalUploadPlan;
+  try {
+    plan = await invoke<LocalUploadPlan>("sftp_scan_local_upload_items", {
+      paths: localPaths,
+    });
+  } catch (err) {
+    console.error("Error al escanear elementos locales:", err);
+    setExplorerStatus("Error al analizar archivos locales", true);
+    return;
+  }
+
+  if (!plan || plan.items.length === 0) {
+    setExplorerStatus("No hay elementos para subir");
+    return;
+  }
+
+  const impactText = formatUploadPlanImpact(plan, dest, localPaths);
   const ok = await confirmDialog({
     title: "Subir archivos",
     message: "¿Subir al servidor?",
-    impact: formatUploadConfirm(localPaths, dest),
+    impact: impactText,
     confirmLabel: "Subir",
     cancelLabel: "Cancelar",
   });
@@ -1471,12 +1491,13 @@ async function runExplorerUpload(localPaths: string[], dest: string) {
     }
 
     const collisions = new Set(detectCollisions(localPaths, existingNames));
-    const toUpload: string[] = [];
+    const excludedRoots = new Set<string>();
+
     for (const p of localPaths) {
       const name = baseName(p);
       if (collisions.has(name)) {
         const replace = await confirmDialog({
-          title: "Reemplazar archivo",
+          title: "Reemplazar elemento",
           message: `Ya existe "${name}" en el destino. ¿Reemplazar?`,
           detailFilename: name,
           detailFullPath: joinRemote(dest, name),
@@ -1484,39 +1505,67 @@ async function runExplorerUpload(localPaths: string[], dest: string) {
           cancelLabel: "Omitir",
           danger: true,
         });
-        if (!replace) continue;
+        if (!replace) {
+          excludedRoots.add(name);
+        }
       }
-      toUpload.push(p);
     }
 
-    if (toUpload.length === 0) {
+    const effectivePlan = filterPlanByExcludedRoots(plan, excludedRoots);
+
+    if (effectivePlan.items.length === 0) {
       setExplorerStatus("Subida cancelada");
       return;
     }
 
     const failed: string[] = [];
-    let uploaded = 0;
-    let index = 0;
-    for (const p of toUpload) {
+    let uploadedFiles = 0;
+    let fileIndex = 0;
+    const totalFilesToUpload = effectivePlan.total_files;
+
+    for (const item of effectivePlan.items) {
       if (transferCancelledByUser || activeTransferGeneration !== myGen) {
         break;
       }
-      const name = baseName(p);
-      const batchIndex = index + 1;
-      const batchTotal = toUpload.length;
+
+      const remoteItemPath = joinRemote(dest, item.relative_path);
+
+      if (item.is_dir) {
+        try {
+          await invoke("sftp_ensure_remote_dir", {
+            terminalId,
+            remoteDir: remoteItemPath,
+          });
+        } catch (err) {
+          if (transferCancelledByUser || isTransferCancelledError(err)) {
+            if (activeTransferGeneration === myGen) {
+              setExplorerStatus("Transferencia cancelada", false, false);
+            }
+            if (uploadedFiles > 0) await refreshExplorerForActiveTerminal(true);
+            return;
+          }
+          console.error("Error al crear directorio remoto", remoteItemPath, err);
+          failed.push(item.relative_path);
+        }
+        continue;
+      }
+
+      fileIndex++;
+      const batchIndex = fileIndex;
+      const batchTotal = totalFilesToUpload;
 
       activeTransferMeta = {
         operation: "upload",
-        fileName: name,
+        fileName: item.relative_path,
         terminalIds: [terminalId],
       };
 
       setExplorerTransferProgress(
         {
           operation: "upload",
-          file_name: name,
+          file_name: item.relative_path,
           bytes_transferred: 0,
-          total_bytes: 0,
+          total_bytes: item.size,
           percent: 0,
           speed_bps: 0,
         },
@@ -1533,42 +1582,47 @@ async function runExplorerUpload(localPaths: string[], dest: string) {
       try {
         await invoke("sftp_upload_file", {
           terminalId,
-          localPath: p,
-          remotePath: joinRemote(dest, name),
+          localPath: item.local_path,
+          remotePath: remoteItemPath,
           onProgress,
         });
-        uploaded += 1;
+        uploadedFiles += 1;
       } catch (err) {
         if (transferCancelledByUser || isTransferCancelledError(err)) {
           if (activeTransferGeneration === myGen) {
             setExplorerStatus("Transferencia cancelada", false, false);
           }
-          if (uploaded > 0) await refreshExplorerForActiveTerminal(true);
+          if (uploadedFiles > 0) await refreshExplorerForActiveTerminal(true);
           return;
         }
-        console.error("Error al subir", p, err);
-        failed.push(name);
+        console.error("Error al subir archivo", item.local_path, err);
+        failed.push(item.relative_path);
       }
-      index++;
     }
 
     if (transferCancelledByUser) {
       if (activeTransferGeneration === myGen) {
         setExplorerStatus("Transferencia cancelada", false, false);
       }
-      if (uploaded > 0) await refreshExplorerForActiveTerminal(true);
+      if (uploadedFiles > 0) await refreshExplorerForActiveTerminal(true);
       return;
     }
 
     if (failed.length === 0) {
-      setExplorerStatus(`Subida completa: ${uploaded} archivo(s)`, false, true);
+      const summaryMsg =
+        effectivePlan.total_dirs > 0
+          ? `Subida completa: ${uploadedFiles} archivo(s), ${effectivePlan.total_dirs} carpeta(s)`
+          : `Subida completa: ${uploadedFiles} archivo(s)`;
+      setExplorerStatus(summaryMsg, false, true);
     } else {
       setExplorerStatus(
-        `Subidos ${uploaded}, fallaron ${failed.length}: ${failed.join(", ")}`,
+        `Subidos ${uploadedFiles}, fallaron ${failed.length}: ${failed.slice(0, 3).join(", ")}${failed.length > 3 ? "…" : ""}`,
         true,
       );
     }
-    if (uploaded > 0) await refreshExplorerForActiveTerminal(true);
+    if (uploadedFiles > 0 || effectivePlan.total_dirs > 0) {
+      await refreshExplorerForActiveTerminal(true);
+    }
   } finally {
     if (activeTransferGeneration === myGen || transferCancelledByUser) {
       transferInProgress = false;

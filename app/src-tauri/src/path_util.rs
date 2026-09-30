@@ -64,4 +64,16 @@ mod tests {
         assert_eq!(parent_remote_path("/home"), Some("/".to_string()));
         assert_eq!(parent_remote_path("/"), None);
     }
+
+    #[test]
+    fn parent_de_deep_path() {
+        assert_eq!(
+            parent_remote_path("/var/www/techpeople/assets/css/style.css"),
+            Some("/var/www/techpeople/assets/css".to_string())
+        );
+        assert_eq!(
+            parent_remote_path("/var/www/techpeople/assets/css"),
+            Some("/var/www/techpeople/assets".to_string())
+        );
+    }
 }

@@ -20,6 +20,7 @@ pub mod fake_sftp;
 pub mod elevated_upload;
 pub mod notes;
 pub mod ssh_negotiation;
+pub mod upload_scan;
 mod external_edit;
 
 use path_util::{join_remote_path, shell_quote};
@@ -30,8 +31,9 @@ use external_edit::{
     edit_session_upload_with_sudo, get_preferred_external_editor_cmd, manage_edit_state,
     probe_external_edit, set_preferred_external_editor_cmd, sftp_cancel_transfer,
     sftp_copy_between_sessions, sftp_download_file, sftp_download_file_with_progress,
-    sftp_pick_download_path, sftp_read_remote_history_paged, sftp_upload_file,
-    start_external_edit, stop_external_edit, sweep_orphans_on_startup, EditWatchers,
+    sftp_ensure_remote_dir, sftp_pick_download_path, sftp_read_remote_history_paged,
+    sftp_upload_file, start_external_edit, stop_external_edit, sweep_orphans_on_startup,
+    EditWatchers,
 };
 use preferences::ensure_app_preferences_schema;
 use theme_wallpapers::ThemeWallpaperDto;
@@ -1356,6 +1358,15 @@ async fn ssh_cd(
 }
 
 #[tauri::command]
+async fn sftp_scan_local_upload_items(
+    paths: Vec<String>,
+) -> Result<upload_scan::LocalUploadPlan, String> {
+    tauri::async_runtime::spawn_blocking(move || upload_scan::scan_local_upload_items(&paths))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 fn list_snippet_categories(app: AppHandle) -> Result<Vec<snippets::SnippetCategory>, String> {
     let conn = get_db_conn(&app)?;
     snippets::ensure_snippet_seed(&conn)?;
@@ -1508,6 +1519,7 @@ pub fn run() {
             close_ssh_session,
             sftp_list_dir,
             ssh_cd,
+            sftp_scan_local_upload_items,
             get_preferred_external_editor_cmd,
             set_preferred_external_editor_cmd,
             probe_external_edit,
@@ -1515,6 +1527,7 @@ pub fn run() {
             sftp_pick_download_path,
             sftp_download_file_with_progress,
             sftp_upload_file,
+            sftp_ensure_remote_dir,
             sftp_cancel_transfer,
             start_external_edit,
             confirm_edit_upload,

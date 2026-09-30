@@ -6,6 +6,28 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
+## [0.1.11] - 2026-09-29
+
+### Added
+
+- **Subida recursiva de carpetas y lotes mixtos por arrastrar y soltar en SFTP (`sftp-recursive-folder-upload`):**
+  - Soporte completo para arrastrar y soltar directorios completos y selecciones mixtas de archivos y carpetas hacia el explorador SFTP sin errores de permisos (`Access is denied / os error 5`).
+  - Módulo de escaneo local en Rust (`app/src-tauri/src/upload_scan.rs`) con recolección determinista previa (`LocalUploadPlan`), normalización de rutas POSIX (`/`), protección contra ciclos de symlinks y límite seguro de profundidad (`MAX_RECURSION_DEPTH = 32`).
+  - Creación idempotente de directorios remotos intermedios (`sftp_ensure_remote_dir` y `ensure_remote_dir_recursive`) que garantiza la existencia de toda la jerarquía padre antes de iniciar la escritura de cada archivo.
+  - Transferencia secuencial streaming de 64 KiB ($O(1)$ de memoria) hacia archivos temporales `.nekossh.part` con bombeo continuo de PTY (`pump_pty`), vaciado explícito (`flush`) y renombrado atómico.
+  - Telemetría en tiempo real por lote con progreso `(i/N)` y conteo de bytes/porcentaje unificado en `#files-status`.
+  - Diálogo de confirmación transparente con desglose exacto de carpetas, archivos y peso total (`formatUploadPlanImpact`).
+  - Manejo de colisiones con exclusión en cascada (`filterPlanByExcludedRoots`) y soporte de cancelación cooperativa inmediata (`sftp_cancel_operation`).
+  - Matriz de certificación exhaustiva con 112 pruebas frontend (Vitest) y 82 pruebas backend (Cargo), incluyendo pruebas de estrés reales con la estructura exacta de `techpeople` (131 archivos y 14 subdirectorios).
+
+## [0.1.10] - 2026-09-29
+
+### Added
+
+- **Aumento del límite de scrollback del terminal a 10,000 líneas (`increase-terminal-scrollback`):**
+  - Configuración explícita de `scrollback: 10000` en todas las instancias de `Terminal` (xterm.js) de shells principales y shells divididos.
+  - Helper modular exportable `DEFAULT_TERMINAL_SCROLLBACK = 10000` en `terminal-options-helper.ts` con cobertura de pruebas unitarias.
+
 ## [0.1.9] - 2026-09-28
 
 ### Added
