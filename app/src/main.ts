@@ -1218,7 +1218,7 @@ async function handlePasteScp(targetDir: string) {
   const targetPath = (targetDir.endsWith("/") ? targetDir : targetDir + "/") + clip.name;
   const ok = await confirmDialog({
     title: "Pegar scp",
-    message: `¿Copiar "${clip.name}" a "${targetPath}"?`,
+    message: `¿Copiar "${clip.name}" a "${targetPath}" (transferencia directa inter-servidor)?`,
     confirmLabel: "Copiar",
   });
   if (!ok || transferInProgress) return;
@@ -1249,11 +1249,21 @@ async function handlePasteScp(targetDir: string) {
   };
 
   try {
+    const targetCtx = getContextForTerminal(targetTerminalId) || activeTerminals.get(targetTerminalId);
+    const targetProf = targetCtx?.profile;
+
     await invoke("sftp_copy_between_sessions", {
       sourceTerminalId: clip.terminalId,
       sourcePath: clip.path,
       targetTerminalId,
       targetPath,
+      targetHost: targetProf?.host,
+      targetPort: targetProf?.port,
+      targetUser: targetProf?.username,
+      targetAuthType: targetProf?.auth_type,
+      targetPassword: targetProf?.password,
+      targetPrivateKey: targetProf?.private_key,
+      targetPassphrase: targetProf?.passphrase,
       onProgress,
     });
     if (activeTransferGeneration === myGen && !transferCancelledByUser) {

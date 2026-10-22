@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   clampPercent,
   formatBytes,
+  formatEta,
   formatSpeed,
   formatTransferHeader,
   formatTransferMetrics,
@@ -121,6 +122,36 @@ describe("transfer-progress-helper", () => {
       speed_bps: 0,
     };
     expect(formatTransferMetrics(emptyFileCompleted)).toBe("0 B / 0 B");
+
+    const scpActive: TransferProgressPayload = {
+      operation: "scp",
+      file_name: "large-backup.tar.gz",
+      bytes_transferred: 50 * 1024 * 1024,
+      total_bytes: 100 * 1024 * 1024,
+      percent: 50,
+      speed_bps: 10 * 1024 * 1024,
+    };
+    expect(formatTransferMetrics(scpActive)).toBe("50.0 MB / 100.0 MB • 10.0 MB/s");
+    expect(formatTransferMetrics(scpActive, { includeEta: true })).toBe("50.0 MB / 100.0 MB • 10.0 MB/s • ETA 0:05");
+
+    const scpExplicitEta: TransferProgressPayload = {
+      ...scpActive,
+      eta_seconds: 65,
+    };
+    expect(formatTransferMetrics(scpExplicitEta)).toBe("50.0 MB / 100.0 MB • 10.0 MB/s • ETA 1:05");
+  });
+
+  it("formatea ETA correctamente en segundos, minutos y horas", () => {
+    expect(formatEta(-5)).toBe("--:--");
+    expect(formatEta(Number.NaN)).toBe("--:--");
+    expect(formatEta(0)).toBe("0:00");
+    expect(formatEta(5)).toBe("0:05");
+    expect(formatEta(59)).toBe("0:59");
+    expect(formatEta(60)).toBe("1:00");
+    expect(formatEta(125)).toBe("2:05");
+    expect(formatEta(3600)).toBe("1h 00m");
+    expect(formatEta(3665)).toBe("1h 01m");
+    expect(formatEta(7325)).toBe("2h 02m");
   });
 
   it("detecta errores de cancelación cooperativa TRANSFER_CANCELLED sin confundirlos con fallos reales", () => {

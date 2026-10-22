@@ -21,6 +21,7 @@ pub mod elevated_upload;
 pub mod notes;
 pub mod ssh_negotiation;
 pub mod upload_scan;
+pub mod p2p_transfer;
 mod external_edit;
 
 use path_util::{join_remote_path, shell_quote};

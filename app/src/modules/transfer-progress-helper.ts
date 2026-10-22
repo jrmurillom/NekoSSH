@@ -5,6 +5,25 @@ export interface TransferProgressPayload {
   total_bytes: number;
   percent: number;
   speed_bps: number;
+  eta_seconds?: number;
+}
+
+/**
+ * Formatea segundos restantes en un tiempo estimado legible (m:ss o Xh YYm).
+ */
+export function formatEta(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) {
+    return "--:--";
+  }
+  const sec = Math.round(seconds);
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  if (m >= 60) {
+    const h = Math.floor(m / 60);
+    const remM = m % 60;
+    return `${h}h ${remM < 10 ? "0" : ""}${remM}m`;
+  }
+  return `${m}:${s < 10 ? "0" : ""}${s}`;
 }
 
 /**
@@ -79,14 +98,25 @@ export function formatTransferHeader(
  * Construye la línea secundaria de métricas (bytes transferidos / totales y velocidad actual).
  * En estado pre-flight (total_bytes === 0 && percent === 0) muestra "Preparando transferencia…".
  */
-export function formatTransferMetrics(payload: TransferProgressPayload): string {
+export function formatTransferMetrics(
+  payload: TransferProgressPayload,
+  options?: { includeEta?: boolean },
+): string {
   if (payload.total_bytes === 0 && payload.percent === 0) {
     return "Preparando transferencia…";
   }
   const transferred = formatBytes(payload.bytes_transferred);
   const total = formatBytes(payload.total_bytes);
   if (payload.speed_bps > 0) {
-    return `${transferred} / ${total} • ${formatSpeed(payload.speed_bps)}`;
+    const speedStr = formatSpeed(payload.speed_bps);
+    const shouldShowEta =
+      options?.includeEta ?? (payload.eta_seconds !== undefined);
+    if (shouldShowEta && payload.total_bytes > payload.bytes_transferred) {
+      const remainingBytes = payload.total_bytes - payload.bytes_transferred;
+      const etaSec = payload.eta_seconds ?? remainingBytes / payload.speed_bps;
+      return `${transferred} / ${total} • ${speedStr} • ETA ${formatEta(etaSec)}`;
+    }
+    return `${transferred} / ${total} • ${speedStr}`;
   }
   return `${transferred} / ${total}`;
 }

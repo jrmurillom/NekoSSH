@@ -67,7 +67,7 @@ fn with_live_ssh(
         .ok_or_else(|| "No hay sesión SSH para esta terminal".to_string())
 }
 
-fn pump_pty(
+pub(crate) fn pump_pty(
     live: &mut LiveSsh,
     pump_buf: &mut [u8],
 ) -> Vec<u8> {
@@ -83,7 +83,7 @@ fn pump_pty(
     pumped
 }
 
-fn emit_pump(app: &AppHandle, terminal_id: &str, data: &[u8]) {
+pub(crate) fn emit_pump(app: &AppHandle, terminal_id: &str, data: &[u8]) {
     if data.is_empty() {
         return;
     }
@@ -96,7 +96,7 @@ fn emit_pump(app: &AppHandle, terminal_id: &str, data: &[u8]) {
     );
 }
 
-fn open_sftp(
+pub(crate) fn open_sftp(
     app: &AppHandle,
     terminal_id: &str,
     live_arc: &Arc<Mutex<LiveSsh>>,
@@ -1704,6 +1704,13 @@ pub async fn sftp_copy_between_sessions(
     source_path: String,
     target_terminal_id: String,
     target_path: String,
+    target_host: Option<String>,
+    target_port: Option<u16>,
+    target_user: Option<String>,
+    target_auth_type: Option<String>,
+    target_password: Option<String>,
+    target_private_key: Option<String>,
+    target_passphrase: Option<String>,
     on_progress: tauri::ipc::Channel<TransferProgressPayload>,
     state: State<'_, SshConnections>,
     transfers: State<'_, ActiveTransferRegistry>,
@@ -1719,320 +1726,41 @@ pub async fn sftp_copy_between_sessions(
     let src_tid = source_terminal_id.clone();
     let tgt_tid = target_terminal_id.clone();
 
-    tauri::async_runtime::spawn_blocking(move || {
+    let target_info = if let (Some(host), Some(user)) = (target_host, target_user) {
+        let auth = if target_auth_type.as_deref() == Some("password") {
+            crate::p2p_transfer::TargetServerAuth::Password(target_password.unwrap_or_default())
+        } else if let Some(key_pem) = target_private_key {
+            crate::p2p_transfer::TargetServerAuth::Key {
+                pem_content: key_pem,
+                passphrase: target_passphrase,
+            }
+        } else {
+            crate::p2p_transfer::TargetServerAuth::Password(target_password.unwrap_or_default())
+        };
+        Some(crate::p2p_transfer::TargetServerInfo {
+            host,
+            port: target_port.unwrap_or(22),
+            username: user,
+            auth,
+        })
+    } else {
+        None
+    };
+
+    return tauri::async_runtime::spawn_blocking(move || {
         let _keep_guard = &guard;
-        if guard.is_cancelled() {
-            return Err(TRANSFER_CANCELLED_ERROR.to_string());
-        }
-        let sftp_src = open_sftp(&app2, &src_tid, &live_src_arc)?;
-        let sftp_tgt = open_sftp(&app2, &tgt_tid, &live_tgt_arc)?;
-        let mut pump_buf = [0u8; 4096];
-
-        // 0. Consultar tamaño origen vía sftp_src.stat()
-        let expected_size = {
-            let mut stat_attempts = 0;
-            loop {
-                if guard.is_cancelled() {
-                    return Err(TRANSFER_CANCELLED_ERROR.to_string());
-                }
-                let res = {
-                    let mut live = live_src_arc.lock().unwrap();
-                    let pumped = pump_pty(&mut live, &mut pump_buf);
-                    let st = sftp_src.stat(Path::new(&source_path));
-                    (st, pumped)
-                };
-                emit_pump(&app2, &src_tid, &res.1);
-                match res.0 {
-                    Ok(st) => break st.size.unwrap_or(0),
-                    Err(e) => {
-                        if stat_attempts < 200 && is_would_block_ssh(&e) {
-                            stat_attempts += 1;
-                            std::thread::sleep(std::time::Duration::from_millis(10));
-                            continue;
-                        }
-                        return Err(format!("Error al consultar tamaño de origen {}: {}", source_path, e));
-                    }
-                }
-            }
-        };
-
-        let file_name = remote_basename(&target_path);
-        let part_path = build_staging_part_path(&target_path);
-        let mut throttler = ProgressThrottler::new("scp", &file_name, expected_size);
-
-        if let Some(payload) = throttler.poll(0, true, Instant::now()) {
-            let _ = on_progress.send(payload);
-        }
-
-        // 1. Abrir archivo origen para lectura
-        let mut file_src = {
-            let mut attempts = 0;
-            loop {
-                if guard.is_cancelled() {
-                    return Err(TRANSFER_CANCELLED_ERROR.to_string());
-                }
-                let res = {
-                    let mut live = live_src_arc.lock().unwrap();
-                    let pumped = pump_pty(&mut live, &mut pump_buf);
-                    let f = sftp_src.open(Path::new(&source_path));
-                    (f, pumped)
-                };
-                emit_pump(&app2, &src_tid, &res.1);
-                match res.0 {
-                    Ok(f) => break f,
-                    Err(e) => {
-                        if attempts < 200 && is_would_block_ssh(&e) {
-                            attempts += 1;
-                            std::thread::sleep(std::time::Duration::from_millis(10));
-                            continue;
-                        }
-                        return Err(format!("Error al abrir origen {}: {}", source_path, e));
-                    }
-                }
-            }
-        };
-
-        // 2. Crear archivo destino temporal `.nekossh.part` (con fallback si no se permite crear en dir)
-        let (mut file_tgt, active_write_path, using_staging) = {
-            let mut attempts = 0;
-            loop {
-                if guard.is_cancelled() {
-                    return Err(TRANSFER_CANCELLED_ERROR.to_string());
-                }
-                let res = {
-                    let mut live = live_tgt_arc.lock().unwrap();
-                    let pumped = pump_pty(&mut live, &mut pump_buf);
-                    let f = sftp_tgt.create(Path::new(&part_path));
-                    (f, pumped)
-                };
-                emit_pump(&app2, &tgt_tid, &res.1);
-                match res.0 {
-                    Ok(f) => break (f, part_path.clone(), true),
-                    Err(e) => {
-                        if attempts < 200 && is_would_block_ssh(&e) {
-                            attempts += 1;
-                            std::thread::sleep(std::time::Duration::from_millis(10));
-                            continue;
-                        }
-                        let mut direct_attempts = 0;
-                        let direct_res = loop {
-                            if guard.is_cancelled() {
-                                return Err(TRANSFER_CANCELLED_ERROR.to_string());
-                            }
-                            let dres = {
-                                let mut live = live_tgt_arc.lock().unwrap();
-                                let pumped = pump_pty(&mut live, &mut pump_buf);
-                                let f = sftp_tgt.create(Path::new(&target_path));
-                                (f, pumped)
-                            };
-                            emit_pump(&app2, &tgt_tid, &dres.1);
-                            match dres.0 {
-                                Ok(f) => break Ok(f),
-                                Err(de) => {
-                                    if direct_attempts < 200 && is_would_block_ssh(&de) {
-                                        direct_attempts += 1;
-                                        std::thread::sleep(std::time::Duration::from_millis(10));
-                                        continue;
-                                    }
-                                    break Err(de);
-                                }
-                            }
-                        };
-                        match direct_res {
-                            Ok(f) => break (f, target_path.clone(), false),
-                            Err(de) => return Err(format!("Error al crear destino {}: {}", target_path, de)),
-                        }
-                    }
-                }
-            }
-        };
-
-        // 3. Streaming de bytes en chunks de 64 KiB (memoria O(1))
-        let mut buffer = [0u8; SFTP_STREAM_CHUNK_BYTES];
-        let mut bytes_transferred: u64 = 0;
-
-        loop {
-            if guard.is_cancelled() {
-                drop(file_tgt);
-                if using_staging {
-                    sftp_unlink_best_effort(&app2, &tgt_tid, &live_tgt_arc, &active_write_path);
-                }
-                return Err(TRANSFER_CANCELLED_ERROR.to_string());
-            }
-            // Leer origen
-            let mut read_attempts = 0;
-            let bytes_read = loop {
-                if guard.is_cancelled() {
-                    drop(file_tgt);
-                    if using_staging {
-                        sftp_unlink_best_effort(&app2, &tgt_tid, &live_tgt_arc, &active_write_path);
-                    }
-                    return Err(TRANSFER_CANCELLED_ERROR.to_string());
-                }
-                let res = {
-                    let mut live = live_src_arc.lock().unwrap();
-                    let pumped = pump_pty(&mut live, &mut pump_buf);
-                    let r = file_src.read(&mut buffer);
-                    (r, pumped)
-                };
-                emit_pump(&app2, &src_tid, &res.1);
-                match res.0 {
-                    Ok(n) => break n,
-                    Err(e) => {
-                        if read_attempts < 200 && e.kind() == std::io::ErrorKind::WouldBlock {
-                            read_attempts += 1;
-                            std::thread::sleep(std::time::Duration::from_millis(10));
-                            continue;
-                        }
-                        drop(file_tgt);
-                        if using_staging {
-                            sftp_unlink_best_effort(&app2, &tgt_tid, &live_tgt_arc, &active_write_path);
-                        }
-                        return Err(format!("Error de lectura: {}", e));
-                    }
-                }
-            };
-
-            if bytes_read == 0 {
-                break; // EOF
-            }
-
-            // Escribir destino con límite determinista de WouldBlock
-            let mut offset = 0;
-            let mut write_attempts = 0;
-            while offset < bytes_read {
-                if guard.is_cancelled() {
-                    drop(file_tgt);
-                    if using_staging {
-                        sftp_unlink_best_effort(&app2, &tgt_tid, &live_tgt_arc, &active_write_path);
-                    }
-                    return Err(TRANSFER_CANCELLED_ERROR.to_string());
-                }
-                let write_res = {
-                    let mut live = live_tgt_arc.lock().unwrap();
-                    let pumped = pump_pty(&mut live, &mut pump_buf);
-                    let w = file_tgt.write(&buffer[offset..bytes_read]);
-                    (w, pumped)
-                };
-                emit_pump(&app2, &tgt_tid, &write_res.1);
-                match write_res.0 {
-                    Ok(0) => {
-                        drop(file_tgt);
-                        if using_staging {
-                            sftp_unlink_best_effort(&app2, &tgt_tid, &live_tgt_arc, &active_write_path);
-                        }
-                        return Err("Escritura remota en destino devolvió 0 bytes".to_string());
-                    }
-                    Ok(n) => {
-                        offset += n;
-                        bytes_transferred += n as u64;
-                        write_attempts = 0;
-                        if let Some(payload) = throttler.poll(bytes_transferred, false, Instant::now()) {
-                            let _ = on_progress.send(payload);
-                        }
-                    }
-                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
-                        write_attempts += 1;
-                        if write_attempts >= MAX_WOULD_BLOCK_ATTEMPTS {
-                            drop(file_tgt);
-                            if using_staging {
-                                sftp_unlink_best_effort(&app2, &tgt_tid, &live_tgt_arc, &active_write_path);
-                            }
-                            return Err(format!("Timeout de escritura en destino {}: conexión bloqueada", target_path));
-                        }
-                        std::thread::sleep(std::time::Duration::from_millis(5));
-                    }
-                    Err(e) => {
-                        drop(file_tgt);
-                        if using_staging {
-                            sftp_unlink_best_effort(&app2, &tgt_tid, &live_tgt_arc, &active_write_path);
-                        }
-                        return Err(format!("Error de escritura: {}", e));
-                    }
-                }
-            }
-        }
-
-        // 4. Flush final
-        let mut flush_attempts = 0;
-        loop {
-            let res = {
-                let mut live = live_tgt_arc.lock().unwrap();
-                let pumped = pump_pty(&mut live, &mut pump_buf);
-                let f = file_tgt.flush();
-                (f, pumped)
-            };
-            emit_pump(&app2, &tgt_tid, &res.1);
-            match res.0 {
-                Ok(()) => break,
-                Err(e) => {
-                    if flush_attempts < 200 && e.kind() == std::io::ErrorKind::WouldBlock {
-                        flush_attempts += 1;
-                        std::thread::sleep(std::time::Duration::from_millis(10));
-                        continue;
-                    }
-                    drop(file_tgt);
-                    if using_staging {
-                        sftp_unlink_best_effort(&app2, &tgt_tid, &live_tgt_arc, &active_write_path);
-                    }
-                    return Err(format!("Error de sincronización: {}", e));
-                }
-            }
-        }
-
-        drop(file_tgt);
-
-        // 5. Verificar integridad de tamaño en destino
-        let target_size = {
-            let mut stat_attempts = 0;
-            loop {
-                let res = {
-                    let mut live = live_tgt_arc.lock().unwrap();
-                    let pumped = pump_pty(&mut live, &mut pump_buf);
-                    let st = sftp_tgt.stat(Path::new(&active_write_path));
-                    (st, pumped)
-                };
-                emit_pump(&app2, &tgt_tid, &res.1);
-                match res.0 {
-                    Ok(st) => break st.size.unwrap_or(0),
-                    Err(e) => {
-                        if stat_attempts < 200 && is_would_block_ssh(&e) {
-                            stat_attempts += 1;
-                            std::thread::sleep(std::time::Duration::from_millis(10));
-                            continue;
-                        }
-                        if using_staging {
-                            sftp_unlink_best_effort(&app2, &tgt_tid, &live_tgt_arc, &active_write_path);
-                        }
-                        return Err(format!("Error al verificar tamaño en destino {}: {}", target_path, e));
-                    }
-                }
-            }
-        };
-
-        if target_size != expected_size {
-            if using_staging {
-                sftp_unlink_best_effort(&app2, &tgt_tid, &live_tgt_arc, &active_write_path);
-            }
-            return Err(format!(
-                "Discrepancia de integridad en copia SCP: tamaño destino ({} bytes) no coincide con origen ({} bytes)",
-                target_size, expected_size
-            ));
-        }
-
-        // 6. Renombrar atómicamente .part -> target_path
-        if using_staging {
-            if let Err(e) = sftp_rename_replace(&app2, &tgt_tid, &live_tgt_arc, &sftp_tgt, &active_write_path, &target_path) {
-                sftp_unlink_best_effort(&app2, &tgt_tid, &live_tgt_arc, &active_write_path);
-                return Err(e);
-            }
-        }
-
-        if let Some(payload) = throttler.poll(expected_size, true, Instant::now()) {
-            let _ = on_progress.send(payload);
-        }
-
-        Ok(())
+        crate::p2p_transfer::orchestrate_p2p_or_pipe_transfer(
+            &app2,
+            &src_tid,
+            &live_src_arc,
+            &source_path,
+            &tgt_tid,
+            &live_tgt_arc,
+            &target_path,
+            target_info,
+            &guard,
+            &on_progress,
+        )
     })
     .await
     .map_err(|e| e.to_string())?

@@ -6,6 +6,16 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
+## [0.1.12] - 2026-10-21
+
+### Added
+
+- **Soporte nativo de Curvas Elípticas ECDH en Windows (`openssl-crypto-backend`):**
+  - Inyección del flag de compilación `LIBSSH2_ECDSA_WINCNG` en `.cargo/config.toml` (raíz y `app/src-tauri`) mediante las variables `CL = "/DLIBSSH2_ECDSA_WINCNG"` y `CFLAGS = "-DLIBSSH2_ECDSA_WINCNG"`.
+  - Habilitación de Curvas Elípticas estándar NIST (`ecdh-sha2-nistp256`, `ecdh-sha2-nistp384`, `ecdh-sha2-nistp521`) mediante la API criptográfica nativa de Windows (WinCNG) acelerada por hardware.
+  - Resolución definitiva del error `[Session(-5)] Unable to exchange encryption keys` al conectar a servidores Linux ultra-modernos (como OpenSSH 10.0 en Debian 13 y Ubuntu 24.04) que deshabilitaron métodos Diffie-Hellman tradicionales.
+  - Certificación de cero regresiones manteniendo total retrocompatibilidad con servidores legacy (Diffie-Hellman Group 14/16/GEX y cifrados CBC).
+
 ## [0.1.11] - 2026-09-29
 
 ### Added
