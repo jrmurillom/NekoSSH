@@ -22,6 +22,7 @@ pub mod notes;
 pub mod ssh_negotiation;
 pub mod upload_scan;
 pub mod p2p_transfer;
+pub mod ai;
 mod external_edit;
 
 use path_util::{join_remote_path, shell_quote};
@@ -944,13 +945,7 @@ async fn start_ssh_session(
                         }
                         Ok(n) => {
                             let output_str = String::from_utf8_lossy(&buf[..n]).into_owned();
-                            let _ = app_handle_read.emit(
-                                "ssh-stdout",
-                                SshStdoutPayload {
-                                    terminal_id: term_id_read.clone(),
-                                    data: output_str,
-                                },
-                            );
+                            emit_filtered_ssh_stdout(&app_handle_read, &term_id_read, output_str);
                         }
                         Err(e) => {
                             if e.kind() == std::io::ErrorKind::WouldBlock
@@ -975,6 +970,36 @@ async fn start_ssh_session(
                 };
 
                 if still_tracked {
+                    let in_flight_sentinel = app_handle_read
+                        .try_state::<ai::PtyTapRegistry>()
+                        .and_then(|pty_taps| pty_taps.take_sentinel(&term_id_read));
+
+                    if let Some(harness) = app_handle_read.try_state::<ai::HarnessRegistry>() {
+                        let phase_after = harness.with_or_create(
+                            &term_id_read,
+                            ai::ExecutionMode::Strict,
+                            |fsm| {
+                                if let Some((_, ai::SentinelPurpose::PlanStep { command, .. })) =
+                                    &in_flight_sentinel
+                                {
+                                    let _ = fsm.halt_on_error(
+                                        command.clone(),
+                                        -1,
+                                        "Conexión SSH interrumpida mientras el paso estaba en ejecución. Verifica el servidor antes de reintentar o revertir.",
+                                    );
+                                }
+                                let _ = fsm.pause_on_disconnect();
+                                fsm.phase().clone()
+                            },
+                        );
+                        let _ = app_handle_read.emit(
+                            "ai-harness-phase-changed",
+                            serde_json::json!({
+                                "session_id": term_id_read,
+                                "phase": phase_after,
+                            }),
+                        );
+                    }
                     if let Some(transfers) = app_handle_read.try_state::<ActiveTransferRegistry>() {
                         transfers.cancel_for_terminal(&term_id_read);
                     }
@@ -1017,18 +1042,71 @@ async fn start_ssh_session(
     Ok(())
 }
 
-#[tauri::command]
-async fn write_ssh_input(
-    terminal_id: String,
-    data: String,
-    state: tauri::State<'_, SshConnections>,
+pub(crate) fn emit_filtered_ssh_stdout(app: &AppHandle, terminal_id: &str, raw_output: String) {
+    if let Some(pty_taps) = app.try_state::<ai::PtyTapRegistry>() {
+        let res = pty_taps.process_chunk(terminal_id, &raw_output);
+        if !res.visible_output.is_empty() {
+            let _ = app.emit(
+                "ssh-stdout",
+                SshStdoutPayload {
+                    terminal_id: terminal_id.to_string(),
+                    data: res.visible_output,
+                },
+            );
+        }
+        if let Some(hint) = res.waiting_input_hint {
+            let _ = app.emit(
+                "ai-pty-waiting-input",
+                serde_json::json!({
+                    "terminal_id": terminal_id,
+                    "hint": hint,
+                }),
+            );
+        }
+        let had_completion = res.sentinel_completed.is_some();
+        if let Some(mut done) = res.sentinel_completed {
+            done.captured_output = ai::SecretRedactor::redact(&done.captured_output);
+            if let Some(harness) = app.try_state::<ai::HarnessRegistry>() {
+                let phase_after = harness.with_or_create(
+                    terminal_id,
+                    ai::ExecutionMode::Strict,
+                    |fsm| {
+                        ai::apply_sentinel_completion_to_fsm(fsm, &done);
+                        fsm.phase().clone()
+                    },
+                );
+                done.updated_phase = Some(phase_after);
+            }
+            let _ = app.emit("ai-pty-command-finished", done);
+        }
+        if res.cwd_changed.is_some() || had_completion {
+            if let Some(catalog) = app.try_state::<ai::ActiveShellsCatalog>() {
+                let snap = catalog.get_snapshot(&pty_taps);
+                let _ = app.emit("ai-shells-updated", snap);
+            }
+        }
+    } else if !raw_output.is_empty() {
+        let _ = app.emit(
+            "ssh-stdout",
+            SshStdoutPayload {
+                terminal_id: terminal_id.to_string(),
+                data: raw_output,
+            },
+        );
+    }
+}
+
+pub(crate) fn write_ssh_raw(
+    state: &SshConnections,
+    terminal_id: &str,
+    data: &str,
 ) -> Result<(), String> {
     let live_arc = {
         let connections = state.0.lock().unwrap();
-        connections.get(&terminal_id).cloned()
+        connections.get(terminal_id).cloned()
     };
     let Some(live_arc) = live_arc else {
-        return Ok(());
+        return Err("No hay sesión SSH activa para esta terminal".to_string());
     };
 
     let bytes = data.as_bytes();
@@ -1070,6 +1148,22 @@ async fn write_ssh_input(
 }
 
 #[tauri::command]
+async fn write_ssh_input(
+    terminal_id: String,
+    data: String,
+    state: tauri::State<'_, SshConnections>,
+) -> Result<(), String> {
+    let exists = {
+        let connections = state.0.lock().unwrap();
+        connections.contains_key(&terminal_id)
+    };
+    if !exists {
+        return Ok(());
+    }
+    write_ssh_raw(&state, &terminal_id, &data)
+}
+
+#[tauri::command]
 async fn resize_ssh_pty(
     terminal_id: String,
     cols: u32,
@@ -1098,7 +1192,15 @@ async fn close_ssh_session(
     edits: tauri::State<'_, SharedEditSessions>,
     watchers: tauri::State<'_, EditWatchers>,
     transfers: tauri::State<'_, ActiveTransferRegistry>,
+    pty_taps: tauri::State<'_, ai::PtyTapRegistry>,
+    ai_cancels: tauri::State<'_, ai::AiTurnCancelRegistry>,
+    ai_feeds: tauri::State<'_, ai::AiUiFeedRegistry>,
+    harness: tauri::State<'_, ai::HarnessRegistry>,
 ) -> Result<(), String> {
+    ai_cancels.cancel_session(&terminal_id);
+    pty_taps.remove_session(&terminal_id);
+    ai_feeds.clear(&terminal_id);
+    harness.remove(&terminal_id);
     transfers.cancel_for_terminal(&terminal_id);
     disconnect_edit_sessions_for_terminal(&app, &terminal_id, &edits, &watchers, true);
     let mut connections = state.0.lock().unwrap();
@@ -1487,6 +1589,29 @@ pub fn run() {
         .manage(ActiveTransferRegistry::new())
         .manage(edit_sessions)
         .manage(edit_watchers)
+        .manage(ai::HarnessRegistry::new())
+        .manage(ai::AiTurnCancelRegistry::new())
+        .manage(ai::PtyTapRegistry::new())
+        .manage(ai::ActiveShellsCatalog::new())
+        .manage(ai::AiUiFeedRegistry::new())
+        .manage(ai::AiSelectionQueue::new())
+        .on_window_event(|window, event| {
+            if let tauri::WindowEvent::Destroyed = event {
+                let app_handle = window.app_handle();
+                if window.label() == "main" {
+                    if let Some(ai_cancels) = app_handle.try_state::<ai::AiTurnCancelRegistry>() {
+                        ai_cancels.cancel_all();
+                    }
+                    if let Some(copilot) =
+                        app_handle.get_webview_window(ai::commands::AI_COPILOT_WINDOW_LABEL)
+                    {
+                        let _ = copilot.close();
+                    }
+                } else if window.label() == ai::commands::AI_COPILOT_WINDOW_LABEL {
+                    ai::commands::cleanup_on_copilot_window_closed(&app_handle);
+                }
+            }
+        })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
         .plugin(
@@ -1500,6 +1625,13 @@ pub fn run() {
                 e
             })?;
             sweep_orphans_on_startup(&app.handle());
+            if let Ok(conn) = get_db_conn(&app.handle()) {
+                if let Ok(prefs) = ai::preferences::get_ai_preferences(&conn) {
+                    if let Some(pty_taps) = app.try_state::<ai::PtyTapRegistry>() {
+                        pty_taps.set_max_capture_lines(prefs.context_max_lines);
+                    }
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -1555,7 +1687,45 @@ pub fn run() {
             set_theme_wallpaper_data_url_cmd,
             set_theme_wallpaper_url_cmd,
             set_theme_wallpaper_opacity_cmd,
-            clear_theme_wallpaper_cmd
+            clear_theme_wallpaper_cmd,
+            ai::commands::get_harness_phase_cmd,
+            ai::commands::start_harness_recon_cmd,
+            ai::commands::validate_recon_command_cmd,
+            ai::commands::audit_command_risk_cmd,
+            ai::commands::redact_secrets_cmd,
+            ai::commands::get_ai_preferences_cmd,
+            ai::commands::set_ai_preferences_cmd,
+            ai::commands::reset_ai_preferences_cmd,
+            ai::commands::pause_harness_on_disconnect_cmd,
+            ai::commands::resume_harness_on_reconnect_cmd,
+            ai::commands::probe_ai_driver_health_cmd,
+            ai::commands::list_ai_models_cmd,
+            ai::commands::run_ai_harness_turn_cmd,
+            ai::commands::cancel_ai_turn_cmd,
+            ai::commands::open_or_focus_ai_copilot_window_cmd,
+            ai::commands::set_ai_window_always_on_top_cmd,
+            ai::commands::notify_ai_theme_changed_cmd,
+            ai::commands::sync_active_shells_cmd,
+            ai::commands::get_active_shells_cmd,
+            ai::commands::set_pty_listening_cmd,
+            ai::commands::seed_pty_visible_screen_cmd,
+            ai::commands::get_pty_context_snapshot_cmd,
+            ai::commands::insert_ai_command_to_pty_cmd,
+            ai::commands::send_selection_to_ai_cmd,
+            ai::commands::take_pending_ai_selection_cmd,
+            ai::commands::execute_ai_readonly_step_cmd,
+            ai::commands::execute_ai_command_cmd,
+            ai::commands::approve_harness_plan_cmd,
+            ai::commands::execute_ai_plan_step_cmd,
+            ai::commands::interrupt_ai_pty_step_cmd,
+            ai::commands::retry_halted_step_cmd,
+            ai::commands::execute_ai_rollback_step_cmd,
+            ai::commands::cancel_harness_mission_cmd,
+            ai::commands::get_ai_feed_cmd,
+            ai::commands::append_ai_feed_cmd,
+            ai::commands::get_ai_session_ui_state_cmd,
+            ai::commands::save_ai_session_ui_state_cmd,
+            ai::commands::clear_ai_conversation_cmd
         ])
         .build(tauri::generate_context!())
         .expect("error while building tauri application");
@@ -1564,6 +1734,9 @@ pub fn run() {
         // Al salir o al pedir salida: cancelar transferencias SFTP activas, limpiar .nekossh.part locales y cerrar Sessions SSH vivas.
         match event {
             tauri::RunEvent::ExitRequested { .. } | tauri::RunEvent::Exit => {
+                if let Some(ai_cancels) = app_handle.try_state::<ai::AiTurnCancelRegistry>() {
+                    ai_cancels.cancel_all();
+                }
                 if let Some(transfers) = app_handle.try_state::<ActiveTransferRegistry>() {
                     transfers.cancel_all_and_cleanup_local_parts();
                 }

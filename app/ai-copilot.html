@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>NekoAI — Copiloto SSH</title>
+    <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="stylesheet" href="/src/ai-copilot/copilot.css" />
+    <script type="module" src="/src/ai-copilot/copilot-main.ts" defer></script>
+  </head>
+  <body class="copilot-body">
+    <div class="copilot-shell">
+      <!-- Única barra superior compacta: Marca + Shell objetivo + Pin + Ventana -->
+      <header class="copilot-header">
+        <div class="copilot-inner copilot-header-inner">
+          <div class="copilot-header-left">
+            <span id="copilot-brand-icon" class="copilot-brand-icon"></span>
+            <h1 class="copilot-title">NekoAI</h1>
+            <span class="copilot-header-sep" aria-hidden="true">|</span>
+            <select id="copilot-shell-select" class="copilot-select copilot-shell-select" aria-label="Shell objetivo"></select>
+            <button
+              type="button"
+              id="btn-pin-shell"
+              class="copilot-icon-btn copilot-icon-btn--sm"
+              title="Seguir foco actual (clic para fijar shell)"
+              aria-label="Fijar shell actual"
+              aria-pressed="false"
+            ></button>
+          </div>
+
+          <div class="copilot-window-actions">
+            <button
+              type="button"
+              id="btn-clear-chat"
+              class="copilot-icon-btn"
+              title="Limpiar conversación de este shell"
+              aria-label="Limpiar conversación de este shell"
+            ></button>
+            <button
+              type="button"
+              id="btn-always-on-top"
+              class="copilot-icon-btn"
+              title="Mantener ventana siempre visible"
+              aria-label="Mantener ventana siempre visible"
+              aria-pressed="false"
+            ></button>
+            <button
+              type="button"
+              id="btn-toggle-settings"
+              class="copilot-icon-btn"
+              title="Ajustes del agente"
+              aria-label="Ajustes del agente"
+              aria-expanded="false"
+            ></button>
+          </div>
+        </div>
+      </header>
+
+      <!-- Vista principal conversacional -->
+      <main id="copilot-workspace" class="copilot-workspace">
+        <div id="copilot-feed" class="copilot-feed" aria-live="polite"></div>
+
+        <!-- Panel de progreso en streaming / cancelación -->
+        <div id="copilot-thinking" class="copilot-thinking" hidden>
+          <div class="copilot-inner">
+            <div class="copilot-thinking-head">
+              <span class="copilot-thinking-title">Analizando con <strong id="thinking-driver-name">agy</strong>…</span>
+              <button type="button" id="btn-cancel-turn" class="copilot-btn-danger-sm">Cancelar</button>
+            </div>
+            <pre id="copilot-progress-stream" class="copilot-progress-stream"></pre>
+          </div>
+        </div>
+
+        <!-- Dock compositor inferior unificado -->
+        <footer class="copilot-composer-wrap">
+          <form id="copilot-chat-form" class="copilot-inner copilot-composer-dock">
+            <textarea
+              id="copilot-prompt-input"
+              rows="2"
+              class="copilot-dock-textarea"
+              autocomplete="off"
+              spellcheck="false"
+              placeholder="Pregunta sobre el servidor o describe la tarea (Enter envía · Shift+Enter nueva línea)..."
+            ></textarea>
+
+            <div class="copilot-dock-footer">
+              <div class="copilot-dock-controls">
+                <button
+                  type="button"
+                  id="btn-toggle-listen"
+                  class="copilot-chip-btn"
+                  aria-pressed="false"
+                  title="Activar o desactivar escucha de la terminal"
+                >
+                  <span class="copilot-status-dot" aria-hidden="true"></span>
+                  <span id="listen-icon"></span>
+                  <span id="listen-label">Escucha OFF</span>
+                </button>
+
+                <button
+                  type="button"
+                  id="btn-toggle-mode"
+                  class="copilot-chip-btn"
+                  title="Alternar entre Modo Estricto (pregunta todo) y Modo Flexible (lecturas automáticas)"
+                >
+                  <span id="mode-icon"></span>
+                  <span id="mode-label">Estricto</span>
+                </button>
+
+                <div class="copilot-model-wrap">
+                  <select
+                    id="copilot-model-select"
+                    class="copilot-select copilot-model-select"
+                    aria-label="Modelo de IA"
+                  >
+                    <option value="">Predeterminado del proveedor</option>
+                  </select>
+                  <button
+                    type="button"
+                    id="btn-refresh-models"
+                    class="copilot-icon-btn copilot-icon-btn--sm"
+                    title="Actualizar catálogo de modelos"
+                    aria-label="Actualizar catálogo de modelos"
+                  ></button>
+                </div>
+              </div>
+
+              <button type="submit" id="btn-send-prompt" class="copilot-send-btn" title="Enviar al copiloto">
+                <span id="send-icon"></span>
+                <span>Enviar</span>
+              </button>
+            </div>
+          </form>
+        </footer>
+      </main>
+
+      <!-- Panel de Ajustes del Agente (Capa 2 + Salud del Proveedor) -->
+      <section id="copilot-settings-view" class="copilot-settings-view" hidden aria-label="Ajustes del agente">
+        <div class="copilot-inner copilot-settings-inner">
+          <div class="copilot-settings-header">
+            <h2>Ajustes del Agente</h2>
+            <button type="button" id="btn-close-settings" class="copilot-btn-ghost">Volver</button>
+          </div>
+
+          <div class="copilot-health-card">
+            <div class="copilot-health-row">
+              <div>
+                <div class="copilot-health-title">Estado del proveedor (<span id="settings-driver-id">agy</span>)</div>
+                <div id="settings-health-msg" class="copilot-health-msg">Verificando disponibilidad…</div>
+              </div>
+              <button type="button" id="btn-probe-health" class="copilot-btn-ghost">Probar</button>
+            </div>
+          </div>
+
+          <form id="copilot-settings-form" class="copilot-settings-form">
+            <div class="copilot-form-group">
+              <label for="cfg-agy-path">Ruta personalizada de agy (opcional)</label>
+              <input
+                id="cfg-agy-path"
+                type="text"
+                autocomplete="off"
+                spellcheck="false"
+                placeholder="Vacío = detección automática en PATH"
+              />
+            </div>
+
+            <div class="copilot-form-group">
+              <label for="cfg-context-lines">Líneas máximas de contexto (50 – 1000)</label>
+              <input
+                id="cfg-context-lines"
+                type="number"
+                min="50"
+                max="1000"
+                value="200"
+                autocomplete="off"
+              />
+            </div>
+
+            <div class="copilot-form-group">
+              <label for="cfg-operator-persona">Rol y tono del operador (Capa 2)</label>
+              <textarea
+                id="cfg-operator-persona"
+                rows="3"
+                autocomplete="off"
+                spellcheck="false"
+              ></textarea>
+            </div>
+
+            <div class="copilot-form-group">
+              <label for="cfg-infra-rules">Reglas de infraestructura (Capa 2)</label>
+              <textarea
+                id="cfg-infra-rules"
+                rows="4"
+                autocomplete="off"
+                spellcheck="false"
+              ></textarea>
+            </div>
+
+            <div id="settings-save-status" class="copilot-settings-status" aria-live="polite"></div>
+
+            <div class="copilot-settings-actions">
+              <button type="button" id="btn-reset-settings" class="copilot-btn-ghost">
+                <span id="reset-settings-icon"></span>
+                <span>Restaurar predeterminados</span>
+              </button>
+              <button type="submit" id="btn-save-settings" class="copilot-btn-primary">Guardar cambios</button>
+            </div>
+          </form>
+        </div>
+      </section>
+    </div>
+  </body>
+</html>

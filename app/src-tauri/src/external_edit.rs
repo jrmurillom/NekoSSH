@@ -31,7 +31,7 @@ use crate::preferences::{
 };
 use crate::path_util::parent_remote_path;
 use crate::{
-    get_db_conn, is_would_block_ssh, LiveSsh, SshConnections, SshStdoutPayload,
+    get_db_conn, is_would_block_ssh, LiveSsh, SshConnections,
 };
 
 pub struct EditWatchers(pub Mutex<HashMap<String, RecommendedWatcher>>);
@@ -87,12 +87,10 @@ pub(crate) fn emit_pump(app: &AppHandle, terminal_id: &str, data: &[u8]) {
     if data.is_empty() {
         return;
     }
-    let _ = app.emit(
-        "ssh-stdout",
-        SshStdoutPayload {
-            terminal_id: terminal_id.to_string(),
-            data: String::from_utf8_lossy(data).into_owned(),
-        },
+    crate::emit_filtered_ssh_stdout(
+        app,
+        terminal_id,
+        String::from_utf8_lossy(data).into_owned(),
     );
 }
 

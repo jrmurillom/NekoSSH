@@ -188,3 +188,8 @@ Implementación: reglas globales `*` + `::-webkit-scrollbar*` y Firefox `scrollb
 
 Cambios de color, tipografía, glass, temas de terminal/editor, o look de controles → este archivo.  
 Cambios de zonas del shell, paneles o patrones de página → `ui-layout-contract.md`.
+
+### Ventana independiente NekoAI (`ai-copilot.html` / `copilot.css`)
+- **Tokens y temas en vivo:** Hereda el `:root` y los 8 `[data-theme="..."]` de `styles.css` mediante el evento `nekossh-theme-changed` y lectura inicial de `localStorage["nekossh-theme"]`.
+- **Controles sin glow y jerarquía limpia:** Contenedor centrado `max-width: 820px`; cabecera única compacta (`44px`) con marca, selector de shell + *Pin Shell* y acciones de ventana; respuestas del asistente renderizadas sin caja pesada (`transparent` y sin borde, con píldora sutil de etapa `.copilot-stage-pill` y soporte Markdown `.copilot-md-table` / `.copilot-md-codewrap`); estado vacío único (`.copilot-empty-hero`) con chips rápidos (`.copilot-quick-chip`); dock inferior unificado (`.copilot-composer-dock`) con `Escucha ON/OFF`, `Modo Estricto/Flexible` y selector de modelo; dejando tarjetas con contorno exclusivamente para burbuja de operador, acordeones de consola (`.copilot-console-details`), confirmación humana (`.copilot-action-card` + `.copilot-audit-alert` + `.copilot-inline-editor`) y rescate/rollback (`.copilot-rollback-panel`), todo con acentos planos sin `box-shadow` tipo neon glow.
+- **Disparador en ventana principal:** `#btn-footer-ai` reutiliza la clase `.gear-btn` en `.footer-actions` con el icono Lucide outline `Sparkles` (`stroke="currentColor"`, cero emojis).
