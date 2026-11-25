@@ -79,3 +79,17 @@ Este documento define el alcance, stack tecnológico y las fases de desarrollo p
 ### 📋 Fase 4b (futuro / diferido): Mascotas Petdex
 * Sincronización e integración de mascotas interactivas del ecosistema Petdex local.
 * Fuera del alcance de Fase 4a.
+
+---
+
+### 📋 Fase 5: Copiloto Agéntico Determinista (`NekoAI`)
+* **Ventana Nativa Independiente (`"neko-ai"` / `ai-copilot.html`)**:
+  - Desacoplada en ventana de sistema operativo multi-monitor (`Always on Top`, instancia única invocada desde `#btn-footer-ai` o `Ctrl+Shift+A`, cierre en cascada al destruir `"main"` y capability aislada `ai-copilot.json`).
+  - Sincronización en tiempo real de los 8 temas conceptuales y del catálogo de shells activos con soporte de **Pin Shell**.
+* **Privacidad por Diseño y Puerto Multi-Proveedor**:
+  - Colector `PtyContextTap` estrictamente *opt-in* (`Escucha OFF` = `0 bytes` retenidos y purga inmediata al apagar), limpieza ANSI/OSC/pantalla alterna, presupuesto *Head + Tail* y sanitización preventiva de secretos (`SecretRedactor`).
+  - Puerto desacoplado `trait AiProviderDriver` con adaptador inicial `AgyCliDriver` aislado en `{appData}/ai-sandbox/` (`--sandbox`, `--disable-slash-commands`, `--json-schema`, `CREATE_NO_WINDOW`).
+* **Arnés Conversacional Progresivo de 4 Fases con Supervisión Humana (*Human-in-the-Loop*)**:
+  - **Auditoría No Bloqueante (`CommandRiskGuard`):** clasifica riesgos en 4 niveles (`read_only`, `config_change`, `service_impact`, `destructive`), reconoce redirecciones inocuas POSIX (`2>/dev/null`, `2>&1`) sin falsos bloqueos y adjunta advertencias (`audit_warning`) sin depender de *whitelists* manuales.
+  - **Ciclo Adaptativo de 4 Fases (1 Comando por Turno):** (1) Diagnóstico no intrusivo (con respuesta directa y tablas Markdown en consultas informativas), (2) Causa raíz + respaldo fechado + `rollback_cmd` + alerta de riesgos, (3) Ejecución progresiva un comando por turno con validación *dry-run* pre-reinicio (`nginx -t`, `sshd -t`), edición inline, `Ctrl+C` y rescate/rollback inmediato ante fallo, y (4) Certificación *Health Check* (`is-active`, `ss -tulpn`, `journalctl`).
+  - **Sembrado Instantáneo de Pantalla:** al encender `Escucha ON`, `"main"` siembra las últimas líneas visibles de `xterm.js` (pasadas por `SecretRedactor`) permitiendo diagnosticar errores ya presentes en consola.

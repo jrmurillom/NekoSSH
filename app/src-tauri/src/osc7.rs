@@ -1,5 +1,3 @@
-#![allow(dead_code)] // módulo retenido para tests unitarios; sync OSC 7 fuera de alcance de producto
-
 //! Parser de secuencias OSC 7 (cwd del shell) en salida PTY.
 
 /// Extrae paths de cwd desde chunks que pueden contener OSC 7.

@@ -231,6 +231,9 @@ function applyTheme(themeName: string): void {
   document.querySelectorAll(".theme-item").forEach(item => {
     item.classList.toggle("is-active", (item as HTMLElement).dataset.themeId === themeName);
   });
+
+  // Sincronizar tema en vivo con la ventana independiente NekoAI (best-effort)
+  void invoke("notify_ai_theme_changed_cmd", { themeId: themeName }).catch(() => {});
 }
 
 // --- Interfaces ---
@@ -864,6 +867,74 @@ function initSettings() {
   void loadPreferredEditorIntoUi();
   initFooterPrefsPopover();
   initFooterShortcutsPopover();
+  initFooterAiButton();
+}
+
+/** Sincroniza el catálogo de shells abiertos desde `"main"` hacia `ActiveShellsCatalog` / `"neko-ai"`. */
+function syncActiveShellsToAi(): void {
+  const shells: Array<{
+    terminal_id: string;
+    context_id: string;
+    profile_name: string;
+    label: string;
+    is_connected: boolean;
+    is_listening: boolean;
+  }> = [];
+
+  activeTerminals.forEach((ctx) => {
+    ctx.panes.forEach((pane) => {
+      shells.push({
+        terminal_id: pane.terminalId,
+        context_id: ctx.id,
+        profile_name: ctx.profileName,
+        label: pane.label,
+        is_connected: pane.isConnected,
+        is_listening: false,
+      });
+    });
+  });
+
+  const activeCtx = currentActiveTerminalId ? activeTerminals.get(currentActiveTerminalId) : undefined;
+  const focusedTerminalId = activeCtx?.focusedTerminalId ?? currentActiveTerminalId ?? null;
+
+  void invoke("sync_active_shells_cmd", { shells, focusedTerminalId }).catch(() => {});
+}
+
+async function openAiCopilotWindow(): Promise<void> {
+  syncActiveShellsToAi();
+  try {
+    await invoke("open_or_focus_ai_copilot_window_cmd");
+    // Reemitir estado de shells y tema actual tras abrir/enfocar `"neko-ai"`
+    syncActiveShellsToAi();
+    const currentTheme = document.documentElement.dataset.theme || "nekossh";
+    void invoke("notify_ai_theme_changed_cmd", { themeId: currentTheme }).catch(() => {});
+  } catch (err) {
+    console.error("No se pudo abrir ventana NekoAI:", err);
+  }
+}
+
+async function sendSelectionToAi(terminalId: string, selectionText: string): Promise<void> {
+  if (!selectionText || selectionText.trim().length === 0) return;
+  syncActiveShellsToAi();
+  try {
+    await invoke("send_selection_to_ai_cmd", { terminalId, selectionText });
+    syncActiveShellsToAi();
+    const currentTheme = document.documentElement.dataset.theme || "nekossh";
+    void invoke("notify_ai_theme_changed_cmd", { themeId: currentTheme }).catch(() => {});
+  } catch (err) {
+    console.error("No se pudo enviar selección a NekoAI:", err);
+  }
+}
+
+/** Botón Sparkles del footer: abre o enfoca la ventana independiente NekoAI. */
+function initFooterAiButton(): void {
+  const aiBtn = document.getElementById("btn-footer-ai");
+  if (!aiBtn) return;
+
+  setButtonIcon(aiBtn, AppIcons.sparkles, { size: 18, className: "icon--md" });
+  aiBtn.addEventListener("click", () => {
+    void openAiCopilotWindow();
+  });
 }
 
 /** Ayuda "?" del footer: abre/cierra popover de atajos rápidos */
@@ -2476,6 +2547,33 @@ function setupSshEventListeners() {
 
       // No auto-listar SFTP al conectar: compite con el PTY y puede tumbar el transport.
       // El usuario abre Archivos / Actualizar cuando quiera.
+      syncActiveShellsToAi();
+      void invoke("resume_harness_on_reconnect_cmd", { sessionId: termId }).catch(() => {});
+    }
+  });
+
+  // Sembrar líneas visibles del buffer xterm.js cuando el usuario enciende Escucha ON en neko-ai
+  void listen<string>("ai-request-visible-buffer", (event) => {
+    const termId = event.payload;
+    const pane = shellPanes.get(termId);
+    if (!pane) return;
+    const buf = pane.term.buffer?.active;
+    if (!buf) return;
+    const lines: string[] = [];
+    const startRow = Math.max(0, buf.length - 200);
+    for (let y = startRow; y < buf.length; y += 1) {
+      const line = buf.getLine(y)?.translateToString(true) ?? "";
+      lines.push(line);
+    }
+    while (lines.length > 0 && lines[lines.length - 1].trim() === "") {
+      lines.pop();
+    }
+    const visibleText = lines.join("\n");
+    if (visibleText.trim().length > 0) {
+      void invoke("seed_pty_visible_screen_cmd", {
+        terminalId: termId,
+        visibleText,
+      }).catch(() => {});
     }
   });
 
@@ -2504,6 +2602,7 @@ function setupSshEventListeners() {
         setTerminalConnectionStatus(activeTerm, "error");
         handleParentShellDown(activeTerm);
       }
+      syncActiveShellsToAi();
     }
   });
 
@@ -2526,6 +2625,7 @@ function setupSshEventListeners() {
         setTerminalConnectionStatus(activeTerm, "disconnected");
         handleParentShellDown(activeTerm);
       }
+      syncActiveShellsToAi();
     }
   });
 }
@@ -3341,6 +3441,16 @@ function createShellPane(
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== "keydown") return true;
 
+    // Ctrl+Shift+E: enviar texto seleccionado a NekoAI (funciona incluso con Escucha OFF)
+    if (ev.ctrlKey && ev.shiftKey && !ev.altKey && !ev.metaKey && ev.key.toLowerCase() === "e") {
+      const selected = term.getSelection();
+      if (selected && selected.trim().length > 0) {
+        ev.preventDefault();
+        void sendSelectionToAi(terminalId, selected);
+        return false;
+      }
+    }
+
     // Ctrl+Shift+F: abrir/enfocar buscador
     if (ev.ctrlKey && ev.shiftKey && ev.key.toLowerCase() === "f") {
       ev.preventDefault();
@@ -3703,6 +3813,8 @@ function switchActiveTerminal(terminalId: string) {
   if (panelMonitor?.classList.contains("active")) {
     checkMonitorSessionState();
   }
+
+  syncActiveShellsToAi();
 }
 
 async function closeTerminalSession(terminalId: string, skipConfirm = false) {
@@ -3769,6 +3881,8 @@ async function closeTerminalSession(terminalId: string, skipConfirm = false) {
   if (panelMonitor?.classList.contains("active")) {
     checkMonitorSessionState();
   }
+
+  syncActiveShellsToAi();
 }
 
 async function closeAllTerminals() {
@@ -3919,6 +4033,24 @@ function initHistoryUi() {
     if (e.ctrlKey && (e.shiftKey || e.altKey) && e.key.toLowerCase() === "s") {
       e.preventDefault();
       document.getElementById("btn-open-snippets")?.click();
+    }
+
+    // Ctrl+Shift+A para abrir/enfocar la ventana independiente NekoAI
+    if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "a") {
+      e.preventDefault();
+      void openAiCopilotWindow();
+    }
+
+    // Ctrl+Shift+E para preguntar a NekoAI sobre el texto seleccionado del shell enfocado
+    if (e.ctrlKey && e.shiftKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === "e") {
+      const activeCtx = currentActiveTerminalId ? activeTerminals.get(currentActiveTerminalId) : undefined;
+      const focusedId = activeCtx?.focusedTerminalId ?? currentActiveTerminalId;
+      const focusedPane = focusedId ? shellPanes.get(focusedId) : undefined;
+      const selected = focusedPane?.term.getSelection() ?? "";
+      if (focusedId && selected.trim().length > 0) {
+        e.preventDefault();
+        void sendSelectionToAi(focusedId, selected);
+      }
     }
   });
 

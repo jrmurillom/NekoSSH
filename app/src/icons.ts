@@ -39,6 +39,17 @@ import {
   FileText,
   Upload,
   Download,
+  Sparkles,
+  Pin,
+  Shield,
+  Zap,
+  Radio,
+  Lock,
+  Unlock,
+  RotateCcw,
+  Send,
+  CheckCircle2,
+  AlertTriangle,
 } from "lucide";
 
 export type IconOptions = {
@@ -111,4 +122,15 @@ export const AppIcons = {
   fileText: FileText,
   upload: Upload,
   download: Download,
+  sparkles: Sparkles,
+  pin: Pin,
+  shield: Shield,
+  zap: Zap,
+  radio: Radio,
+  lock: Lock,
+  unlock: Unlock,
+  rotateCcw: RotateCcw,
+  send: Send,
+  checkCircle2: CheckCircle2,
+  alertTriangle: AlertTriangle,
 } as const;
