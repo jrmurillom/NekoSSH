@@ -6,6 +6,27 @@ El formato se basa en [Keep a Changelog](https://keepachangelog.com/es-ES/1.1.0/
 
 ## [Unreleased]
 
+## [0.1.13] - 2026-11-25
+
+### Added
+
+- **Copiloto Agéntico Determinista `NekoAI` (`ai-copilot-window`, `ai-harness-core`, `ai-provider-driver-agy`, `ai-guided-execution`, `ai-conversational-copilot-v2`):**
+  - Nueva ventana nativa independiente `"neko-ai"` (`app/ai-copilot.html`) multi-monitor con `Always on Top`, sincronización reactiva de los 8 temas conceptuales, catálogo multi-shell con **Pin Shell** y arquitectura limpia sin *neon glow* (dock inferior unificado, respuestas sin borde redundante y hero único inicial).
+  - Ciclo operativo adaptativo de 4 fases (Diagnóstico, Propuesta, Ejecución progresiva y Verificación post-cambio) con modos `Estricto` y `Flexible`, persistencia de preferencias y directivas Capa 2 en SQLite, y puerto agnóstico `AiProviderDriver` con adaptador aislado `AgyCliDriver` en `{appData}/ai-sandbox/`.
+  - Colector opt-in `PtyContextTap` (`Escucha OFF` = `0 bytes` de `ssh-stdout` retenidos), sembrado instantáneo de pantalla visible, centinela POSIX silencioso inmune al eco TTY coloreado (`zsh`) y detección en vivo de espera interactiva (`sudo`, `[y/N]`, `fish`).
+  - Auditor estático léxico en 4 etapas (`CommandRiskGuard`) con semáforo (`Solo lectura`, `Modifica archivos / config`, `Impacto en servicio`, `Crítico · Destructivo`), alertas explicativas no bloqueantes, desenvolvimiento de wrappers (`xargs`, `timeout`, `nice`, `ionice`, `stdbuf`, `setsid`, `sudo`, `command`), purgas `journalctl` auditadas y `SecretRedactor` ampliado (PEM, `*_KEY`/`*_SECRET`/`*_TOKEN`/`*_PASSWORD`, JSON/YAML y prefijos `sk-`/`ghp_`/`gho_`/`github_pat_`/`glpat-`/`AKIA`).
+  - Aceleradores comerciales (`ai-copilot-power-ux`): atajo `Ctrl+Shift+E` para enviar selección de consola a `"neko-ai"` aun con `Escucha OFF`, botón **Insertar en terminal** sin `Enter`, streaming limpio sin JSON crudo, auto-ajuste de compositor (`<= 140px`), historial `↑`/`↓` y telemetría no invasiva `OSC 7` + chip `Escucha ON · N líneas`.
+
+### Fixed
+
+- **Higiene de procesos, sesión y UI (`ai-critical-hardening`, `ai-core-hygiene-and-redaction`):**
+  - Terminación recursiva del árbol de procesos en Windows (`taskkill /F /T /PID`) al cancelar o expirar `agy`, preservación por `terminal_id` de tarjetas HITL/rollback pendientes entre cambios de pestaña o reapertura, liberación de `HarnessRegistry::remove` al cerrar sesión SSH, límite dinámico `context_max_lines` (`50..1000`) y puente accionable ante respuestas `ProposePlan`.
+
+### Changed
+
+- **Sincronización SSOT y OpenSpec:**
+  - Consolidadas y archivadas todas las especificaciones NekoAI en `openspec/specs/` (`22/22` specs válidas) junto con `docs/project_scope.md`, `docs/design/ui-layout-contract.md` y `docs/design/DESIGN.md`.
+
 ## [0.1.12] - 2026-10-21
 
 ### Added
